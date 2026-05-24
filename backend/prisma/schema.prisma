@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  ProductMember[]
+  clients  Client[]
+  backlog  BacklogColumn[]
+  board    BoardColumn[]
+  sprints  Sprint[]
+}
+
+model ProductMember {
+  id        String   @id @default(cuid())
+  productId String
+  name      String
+  email     String
+  role      String   @default("Membro")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, email])
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  productId   String
+  name        String
+  hasSquad    Boolean  @default(false)
+  squadHours  Int      @default(0)
+  contactName String?
+  contactEmail String?
+  status      String   @default("Ativo")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+}
+
+model BacklogColumn {
+  id        String   @id @default(cuid())
+  productId String
+  title     String
+  color     String
+  icon      String
+  position  Int
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+}
+
+model BoardColumn {
+  id        String   @id @default(cuid())
+  productId String
+  title     String
+  color     String
+  icon      String
+  position  Int
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Sprint {
+  id          String   @id @default(cuid())
+  productId   String
+  name        String
+  startDate   DateTime?
+  endDate     DateTime?
+  objective   String?
+  status      String   @default("Planejamento")
+  capacity    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+}
+
+model Task {
+  id              String   @id @default(cuid())
+  productId       String
+  backlogColumnId String?
+  sprintId        String?
+  clientId        String?
+  title           String
+  description     String?
+  priority        String   @default("Media")
+  category        String?
+  storyPoints     Int?
+  estimate        String?
+  owner           String?
+  data            Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  backlogColumn BacklogColumn? @relation(fields: [backlogColumnId], references: [id], onDelete: SetNull)
+  sprint        Sprint?        @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  client        Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+}
+
+model WorkspaceState {
+  key       String   @id
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: toolz_po_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: toolz_po
+      POSTGRES_USER: toolz
+      POSTGRES_PASSWORD: toolz
+    ports:
+      - "5432:5432"
+    volumes:
+      - toolz_po_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toolz -d toolz_po"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  toolz_po_postgres_data:
