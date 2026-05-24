@@ -1,6 +1,7 @@
 import { createLinearClient } from "../integrations/linear/linear.client.js";
 import { createN8nClient } from "../integrations/n8n/n8n.client.js";
 import { getIntegrationSettings } from "./integration-settings.service.js";
+import { getWorkspaceState } from "./workspace-state.service.js";
 import type {
   ArchiveBacklogIssueInput,
   BacklogPriority,
@@ -30,6 +31,13 @@ interface LinearCycle {
 interface LinearWorkflowState {
   id: string;
   name: string;
+}
+
+interface LinearUser {
+  id: string;
+  name?: string;
+  displayName?: string;
+  email?: string;
 }
 
 const createdIssuesByTitle = new Map<string, CreatedLinearIssue>();
@@ -112,6 +120,14 @@ function buildDescription(input: CreateBacklogIssueInput, epicName?: string) {
 }
 
 function findCreatedIssueRecord(result: unknown): CreatedLinearIssue | undefined {
+  if (typeof result === "string") {
+    try {
+      return findCreatedIssueRecord(JSON.parse(result));
+    } catch {
+      return undefined;
+    }
+  }
+
   if (!result || typeof result !== "object") {
     return undefined;
   }
@@ -128,27 +144,30 @@ function findCreatedIssueRecord(result: unknown): CreatedLinearIssue | undefined
   }
 
   const record = result as Record<string, unknown>;
-  const issue = record.issue;
+  const issue = record.issue ?? record.data ?? record.node;
 
   if (issue && typeof issue === "object") {
     const issueRecord = issue as Record<string, unknown>;
+    const id = getIssueIdFromRecord(issueRecord);
 
-    if (typeof issueRecord.id === "string") {
+    if (id) {
       return {
-        id: issueRecord.id,
-        identifier: typeof issueRecord.identifier === "string" ? issueRecord.identifier : issueRecord.id,
+        id,
+        identifier: getStringValue(issueRecord.identifier) ?? getStringValue(issueRecord.linearIdentifier) ?? id,
         title: typeof issueRecord.title === "string" ? issueRecord.title : "",
-        url: typeof issueRecord.url === "string" ? issueRecord.url : ""
+        url: getStringValue(issueRecord.url) ?? getStringValue(issueRecord.linearUrl) ?? ""
       };
     }
   }
 
-  if (typeof record.id === "string") {
+  const id = getIssueIdFromRecord(record);
+
+  if (id) {
     return {
-      id: record.id,
-      identifier: typeof record.identifier === "string" ? record.identifier : record.id,
+      id,
+      identifier: getStringValue(record.identifier) ?? getStringValue(record.linearIdentifier) ?? id,
       title: typeof record.title === "string" ? record.title : "",
-      url: typeof record.url === "string" ? record.url : ""
+      url: getStringValue(record.url) ?? getStringValue(record.linearUrl) ?? ""
     };
   }
 
@@ -160,6 +179,14 @@ function findCreatedIssueRecord(result: unknown): CreatedLinearIssue | undefined
   }
 
   return undefined;
+}
+
+function getStringValue(value: unknown) {
+  return typeof value === "string" && value.trim() && !value.includes("{{") && value !== "undefined" ? value : undefined;
+}
+
+function getIssueIdFromRecord(record: Record<string, unknown>) {
+  return getStringValue(record.id) ?? getStringValue(record.issueId) ?? getStringValue(record.linearIssueId);
 }
 
 async function resolveLabelId(client: ReturnType<typeof createLinearClient>, category?: string) {
@@ -179,6 +206,33 @@ async function resolveLabelId(client: ReturnType<typeof createLinearClient>, cat
   `);
 
   return data.issueLabels.nodes.find((label) => label.name.toLowerCase() === category.toLowerCase())?.id;
+}
+
+async function resolveLabelIds(client: ReturnType<typeof createLinearClient>, labels: Array<string | undefined>) {
+  const wantedLabels = labels.map((label) => label?.trim()).filter(Boolean) as string[];
+
+  if (!wantedLabels.length) {
+    return undefined;
+  }
+
+  const data = await client.request<{ issueLabels: { nodes: LinearLabel[] } }>(`
+    query IssueLabels {
+      issueLabels(first: 250) {
+        nodes {
+          id
+          name
+        }
+      }
+    }
+  `);
+  const labelIds = wantedLabels
+    .map((wantedLabel) => {
+      const normalizedWantedLabel = normalizeLinearStateName(wantedLabel);
+      return data.issueLabels.nodes.find((label) => normalizeLinearStateName(label.name) === normalizedWantedLabel)?.id;
+    })
+    .filter(Boolean) as string[];
+
+  return labelIds.length ? Array.from(new Set(labelIds)) : undefined;
 }
 
 async function resolveCycleId(client: ReturnType<typeof createLinearClient>, teamId: string, sprint?: string) {
@@ -202,7 +256,33 @@ async function resolveCycleId(client: ReturnType<typeof createLinearClient>, tea
     { teamId }
   );
 
-  return data.team.cycles.nodes.find((cycle) => cycle.name.toLowerCase() === sprint.toLowerCase())?.id;
+  const normalizedSprint = normalizeLinearStateName(sprint);
+  return data.team.cycles.nodes.find((cycle) => normalizeLinearStateName(cycle.name) === normalizedSprint)?.id;
+}
+
+async function resolveAssigneeId(client: ReturnType<typeof createLinearClient>, owner?: string) {
+  if (!owner?.trim()) {
+    return undefined;
+  }
+
+  const data = await client.request<{ users: { nodes: LinearUser[] } }>(`
+    query Users {
+      users(first: 250) {
+        nodes {
+          id
+          name
+          displayName
+          email
+        }
+      }
+    }
+  `);
+  const normalizedOwner = normalizeLinearStateName(owner);
+
+  return data.users.nodes.find((user) => {
+    const values = [user.name, user.displayName, user.email].filter(Boolean) as string[];
+    return values.some((value) => normalizeLinearStateName(value) === normalizedOwner || normalizeLinearStateName(value).includes(normalizedOwner));
+  })?.id;
 }
 
 async function resolveLinearStateByName(input: UpdateBacklogIssueInput) {
@@ -232,9 +312,9 @@ async function resolveLinearStateByName(input: UpdateBacklogIssueInput) {
     `,
     { teamId: config.teamId }
   );
-  const normalizedStatus = input.status.trim().toLowerCase();
+  const normalizedStatus = normalizeLinearStateName(input.status);
 
-  return data.team.states.nodes.find((state) => state.name.trim().toLowerCase() === normalizedStatus);
+  return data.team.states.nodes.find((state) => normalizeLinearStateName(state.name) === normalizedStatus);
 }
 
 async function findLinearIssueByTitle(input: CreateBacklogIssueInput): Promise<CreatedLinearIssue | undefined> {
@@ -377,9 +457,12 @@ async function createN8nIssue(input: CreateBacklogIssueInput) {
 
   const client = createN8nClient({ secret: config.secret, webhookUrl: config.webhookUrl });
   const linearInput = {
+    category: input.category,
+    client: input.client,
     description: input.description,
     estimate: input.storyPoints,
     priority: priorityMap[input.priority ?? "Media"],
+    sprint: input.sprint,
     teamId: linearConfig.teamId,
     title: input.name
   };
@@ -388,9 +471,12 @@ async function createN8nIssue(input: CreateBacklogIssueInput) {
   return client.send<
     {
       title: string;
+      category?: string;
+      client?: string;
       description?: string;
       teamId?: string;
       priority: number;
+      sprint?: string;
       estimate?: number;
     },
     { issue?: CreatedLinearIssue; [key: string]: unknown }
@@ -424,23 +510,30 @@ async function updateN8nIssue(input: UpdateBacklogIssueInput) {
 
   const client = createN8nClient({ secret: config.secret, webhookUrl: config.webhookUrl });
   const cachedIssue = input.title ? createdIssuesByTitle.get(input.title) : undefined;
-  const issueId = input.linearIssueId ?? cachedIssue?.id ?? input.linearIdentifier ?? input.linearUrl ?? "";
+  const workspaceIssue = await findLinkedWorkspaceIssue(input.title);
+  const issueId = input.linearIssueId ?? cachedIssue?.id ?? workspaceIssue?.id ?? input.linearIdentifier ?? workspaceIssue?.identifier ?? input.linearUrl ?? workspaceIssue?.url ?? "";
   const updatePayload = {
     id: issueId,
     issueId,
     linearIssueId: issueId,
     title: input.title,
     description: input.description ?? "",
-    linearIdentifier: input.linearIdentifier ?? cachedIssue?.identifier,
-    linearUrl: input.linearUrl ?? cachedIssue?.url,
+    category: input.category,
+    client: input.client,
+    linearIdentifier: input.linearIdentifier ?? cachedIssue?.identifier ?? workspaceIssue?.identifier,
+    linearUrl: input.linearUrl ?? cachedIssue?.url ?? workspaceIssue?.url,
     priority: priorityMap[input.priority ?? "Media"],
-    estimate: input.estimate,
+    estimate: input.estimate ?? input.storyPoints,
+    storyPoints: input.storyPoints ?? input.estimate,
     owner: input.owner,
     assignee: input.owner,
+    sprint: input.sprint,
     linearStateId: input.linearStateId,
     stateId: input.linearStateId,
     statusId: input.linearStateId,
     status: input.status,
+    statusName: input.status,
+    stateName: input.status,
     state: input.status
   };
   console.log("n8n issue update payload", JSON.stringify(updatePayload));
@@ -452,16 +545,22 @@ async function updateN8nIssue(input: UpdateBacklogIssueInput) {
       linearIssueId: string;
       title: string;
       description?: string;
+      category?: string;
+      client?: string;
       linearIdentifier?: string;
       linearUrl?: string;
       priority: number;
       estimate?: number;
+      storyPoints?: number;
       owner?: string;
       assignee?: string;
+      sprint?: string;
       linearStateId?: string;
       stateId?: string;
       statusId?: string;
       status?: string;
+      statusName?: string;
+      stateName?: string;
       state?: string;
     },
     { issue?: CreatedLinearIssue; success?: boolean; [key: string]: unknown }
@@ -490,12 +589,20 @@ async function updateLinearIssueDirectly(input: UpdateBacklogIssueInput) {
   }
 
   const client = createLinearClient({ apiKey: config.apiKey });
+  const [labelIds, cycleId, assigneeId] = await Promise.all([
+    resolveLabelIds(client, [input.category, input.client]),
+    resolveCycleId(client, config.teamId ?? "", input.sprint),
+    resolveAssigneeId(client, input.owner)
+  ]);
   const issueInput = {
     title: input.title,
     description: input.description ?? "",
     priority: priorityMap[input.priority ?? "Media"],
-    estimate: input.estimate,
-    stateId: input.linearStateId
+    estimate: input.estimate ?? input.storyPoints,
+    stateId: input.linearStateId,
+    labelIds,
+    cycleId,
+    assigneeId
   };
   console.log("linear direct issue update payload", JSON.stringify({ id: issue.id, input: issueInput }));
 
@@ -528,14 +635,15 @@ async function archiveN8nIssue(input: ArchiveBacklogIssueInput) {
 
   const client = createN8nClient({ secret: config.secret, webhookUrl: config.webhookUrl });
   const cachedIssue = input.title ? createdIssuesByTitle.get(input.title) : undefined;
-  const issueId = input.linearIssueId ?? cachedIssue?.id ?? input.linearIdentifier ?? input.linearUrl ?? "";
+  const workspaceIssue = await findLinkedWorkspaceIssue(input.title);
+  const issueId = input.linearIssueId ?? cachedIssue?.id ?? workspaceIssue?.id ?? input.linearIdentifier ?? workspaceIssue?.identifier ?? input.linearUrl ?? workspaceIssue?.url ?? "";
   const archivePayload = {
     id: issueId,
     issueId,
     linearIssueId: issueId,
     title: input.title,
-    linearIdentifier: input.linearIdentifier ?? cachedIssue?.identifier,
-    linearUrl: input.linearUrl ?? cachedIssue?.url
+    linearIdentifier: input.linearIdentifier ?? cachedIssue?.identifier ?? workspaceIssue?.identifier,
+    linearUrl: input.linearUrl ?? cachedIssue?.url ?? workspaceIssue?.url
   };
   console.log("n8n issue delete payload", JSON.stringify(archivePayload));
 
@@ -591,15 +699,20 @@ export async function createBacklogIssue(input: CreateBacklogIssueInput) {
 
 export async function updateBacklogIssue(input: UpdateBacklogIssueInput) {
   if (isN8nConfigured(input)) {
+    input = await hydrateIssueLinkFromWorkspace(input);
+    const linearConfig = getLinearConfig(input);
+    const canResolveLinearState = Boolean(linearConfig.apiKey && linearConfig.teamId);
     let linearState: LinearWorkflowState | undefined;
 
-    try {
-      linearState = await resolveLinearStateByName(input);
-    } catch (error) {
-      console.log("linear state lookup failed", error instanceof Error ? error.message : String(error));
+    if (canResolveLinearState) {
+      try {
+        linearState = await resolveLinearStateByName(input);
+      } catch (error) {
+        console.log("linear state lookup failed", error instanceof Error ? error.message : String(error));
+      }
     }
 
-    if (input.status && !linearState) {
+    if (input.status && canResolveLinearState && !linearState) {
       const message = `Nao ha status no Linear com o nome "${input.status}".`;
       console.log("n8n issue update skipped", message);
 
@@ -640,8 +753,18 @@ export async function updateBacklogIssue(input: UpdateBacklogIssueInput) {
   return { mode: "mock", success: true };
 }
 
+function normalizeLinearStateName(value?: string) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
 export async function archiveBacklogIssue(input: ArchiveBacklogIssueInput) {
   if (isN8nConfigured(input)) {
+    input = await hydrateIssueLinkFromWorkspace(input);
     const result = await archiveN8nIssue(input);
     console.log("n8n issue delete response", JSON.stringify(result));
 
@@ -656,6 +779,87 @@ export async function archiveBacklogIssue(input: ArchiveBacklogIssueInput) {
   }
 
   return { mode: "mock", success: true };
+}
+
+async function hydrateIssueLinkFromWorkspace<TInput extends {
+  title?: string;
+  linearIdentifier?: string;
+  linearIssueId?: string;
+  linearUrl?: string;
+}>(input: TInput) {
+  if (input.linearIssueId || input.linearIdentifier || input.linearUrl) {
+    return input;
+  }
+
+  const issue = await findLinkedWorkspaceIssue(input.title);
+
+  return issue
+    ? {
+        ...input,
+        linearIssueId: issue.id,
+        linearIdentifier: issue.identifier,
+        linearUrl: issue.url
+      }
+    : input;
+}
+
+async function findLinkedWorkspaceIssue(title?: string): Promise<CreatedLinearIssue | undefined> {
+  if (!title?.trim()) {
+    return undefined;
+  }
+
+  const normalizedTitle = title.trim().toLowerCase();
+  const snapshot = await getWorkspaceState() as {
+    backlogConfig?: Array<{ entries?: unknown[] }>;
+    boardConfig?: Array<{ cards?: unknown[] }>;
+  };
+  const candidates = [
+    ...(snapshot.backlogConfig ?? []).flatMap((column) => column.entries ?? []),
+    ...(snapshot.boardConfig ?? []).flatMap((column) => column.cards ?? [])
+  ];
+
+  for (const candidate of candidates) {
+    const issue = getWorkspaceIssueRecord(candidate);
+
+    if (issue && issue.title.trim().toLowerCase() === normalizedTitle) {
+      return issue;
+    }
+  }
+
+  return undefined;
+}
+
+function getWorkspaceIssueRecord(value: unknown): CreatedLinearIssue | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const title = getStringValue(record.name) ?? getStringValue(record.title);
+  const id = getStringValue(record.linearIssueId);
+  const identifier = getStringValue(record.linearIdentifier);
+  const url = getStringValue(record.linearUrl);
+
+  if (title && (id || identifier || url)) {
+    return {
+      id: id ?? identifier ?? url ?? "",
+      identifier: identifier ?? id ?? "",
+      title,
+      url: url ?? ""
+    };
+  }
+
+  if (Array.isArray(record.items)) {
+    for (const item of record.items) {
+      const issue = getWorkspaceIssueRecord(item);
+
+      if (issue) {
+        return issue;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export async function createBacklogEpic(input: CreateBacklogEpicInput) {

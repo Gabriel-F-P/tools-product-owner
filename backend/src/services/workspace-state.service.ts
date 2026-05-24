@@ -18,6 +18,28 @@ export async function getWorkspaceState() {
   }
 }
 
+export async function getWorkspaceStateRecord() {
+  try {
+    const state = await prisma.workspaceState.findUnique({
+      where: { key: WORKSPACE_STATE_KEY }
+    });
+
+    fallbackWorkspaceState = state?.data ?? fallbackWorkspaceState;
+
+    return {
+      data: state?.data ?? fallbackWorkspaceState,
+      updatedAt: state?.updatedAt?.toISOString() ?? null
+    };
+  } catch (error) {
+    console.log("workspace-state read fallback", error instanceof Error ? error.message : String(error));
+
+    return {
+      data: fallbackWorkspaceState,
+      updatedAt: null
+    };
+  }
+}
+
 export async function saveWorkspaceState(data: Prisma.InputJsonValue) {
   fallbackWorkspaceState = JSON.parse(JSON.stringify(data ?? {})) as Prisma.JsonValue;
 

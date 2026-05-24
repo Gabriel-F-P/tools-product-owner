@@ -74,8 +74,13 @@ type WorkspaceStateSnapshot = Partial<{
   sprintConfig: SprintPlan[];
   sprintStatusConfig: SprintStatus[];
 }>;
+type WorkspaceStateResponse = {
+  data?: WorkspaceStateSnapshot | null;
+  updatedAt?: string | null;
+};
 
-const workspaceStateStorageKey = "toolz-workspace-state";
+const workspaceStateStorageKey = "toolz-workspace-state-v2";
+const authSessionStorageKey = "toolz-auth-session";
 
 interface BoardTabField {
   id: string;
@@ -201,30 +206,19 @@ const defaultProducts = [
     id: "product-lxp",
     name: "LXP",
     members: [
-      { id: "member-gabriel", name: "Gabriel Fonseca", email: "gabriel.fonseca@toolzz.me", permission: "Admin" },
-      { id: "member-amanda", name: "Amanda Silva", email: "amanda@toolz.me", permission: "Admin" },
-      { id: "member-joao", name: "Joao Silva", email: "joao@toolz.me", permission: "Membro" }
-    ]
-  },
-  {
-    id: "product-mobile",
-    name: "App Mobile",
-    members: [
-      { id: "member-gabriel-mobile", name: "Gabriel Fonseca", email: "gabriel.fonseca@toolzz.me", permission: "Admin" },
-      { id: "member-amanda-mobile", name: "Amanda Silva", email: "amanda@toolz.me", permission: "Membro" },
-      { id: "member-maria", name: "Maria Oliveira", email: "maria@toolz.me", permission: "Admin" }
+      { id: "member-gabriel", name: "Gabriel Fonseca", email: "gabriel.fonseca@toolzz.me", permission: "Admin" }
     ]
   }
 ] satisfies ProductAccess[];
 
 const localUsers = [
-  { email: "gabriel.fonseca@toolzz.me", password: "Gabr1el=12" },
-  { email: "amanda@toolz.me", password: "admin123" }
+  { email: "gabriel.fonseca@toolzz.me", password: "Gabr1el=12" }
 ];
 
 interface SessionContextValue {
   activeProduct: ProductAccess;
   activeProductId: string;
+  currentMember?: ProductMember;
   currentPermission: UserPermission;
   isAdmin: boolean;
   products: ProductAccess[];
@@ -732,8 +726,14 @@ const defaultRetrospectives = [
 ] satisfies Retrospective[];
 
 export function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authenticatedEmail, setAuthenticatedEmail] = useState("gabriel.fonseca@toolzz.me");
+  const [authenticatedEmail, setAuthenticatedEmail] = useState(() => {
+    const storedSession = window.localStorage.getItem(authSessionStorageKey);
+    return storedSession && localUsers.some((user) => user.email === storedSession) ? storedSession : "gabriel.fonseca@toolzz.me";
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const storedSession = window.localStorage.getItem(authSessionStorageKey);
+    return Boolean(storedSession && localUsers.some((user) => user.email === storedSession));
+  });
   const [page, setPage] = useState<Page>("board");
   const [products, setProducts] = useState<ProductAccess[]>(() => defaultProducts.map((product) => ({ ...product, members: product.members.map((member) => ({ ...member })) })));
   const [activeProductId, setActiveProductId] = useState(defaultProducts[0]?.id ?? "");
@@ -746,6 +746,8 @@ export function App() {
   const [sprintStatusConfig, setSprintStatusConfig] = useState<SprintStatus[]>(() => sprintStatuses.map((status) => ({ ...status })));
   const [initialVisibleTabs, setInitialVisibleTabs] = useState(4);
   const [isWorkspaceStateLoaded, setIsWorkspaceStateLoaded] = useState(false);
+  const [lastWorkspaceUpdatedAt, setLastWorkspaceUpdatedAt] = useState<string | null>(null);
+  const skipNextWorkspaceSaveRef = useRef(false);
   const [theme, setTheme] = useState<Theme>(() => {
     const storedTheme = window.localStorage.getItem("toolz-theme");
     return storedTheme === "dark" ? "dark" : "light";
@@ -756,6 +758,22 @@ export function App() {
     window.localStorage.setItem("toolz-theme", theme);
   }, [theme]);
 
+  function applyWorkspaceSnapshot(snapshot?: WorkspaceStateSnapshot | null) {
+    if (!snapshot) {
+      return;
+    }
+
+    skipNextWorkspaceSaveRef.current = true;
+    if (snapshot.backlogConfig) setBacklogConfig(snapshot.backlogConfig);
+    if (snapshot.boardConfig) setBoardConfig(snapshot.boardConfig);
+    if (snapshot.categoryConfig) setCategoryConfig(snapshot.categoryConfig);
+    if (snapshot.clientConfig) setClientConfig(snapshot.clientConfig);
+    if (typeof snapshot.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
+    if (snapshot.retroConfig) setRetroConfig(snapshot.retroConfig);
+    if (snapshot.sprintConfig) setSprintConfig(snapshot.sprintConfig);
+    if (snapshot.sprintStatusConfig) setSprintStatusConfig(snapshot.sprintStatusConfig);
+  }
+
   useEffect(() => {
     if (!isAuthenticated) {
       return;
@@ -763,39 +781,50 @@ export function App() {
 
     fetch("/api/workspace-state")
       .then((response) => response.ok ? response.json() : { data: null })
-      .then(({ data }: { data?: WorkspaceStateSnapshot | null }) => {
+      .then(({ data, updatedAt }: WorkspaceStateResponse) => {
         const storedState = window.localStorage.getItem(workspaceStateStorageKey);
         const snapshot = data ?? (storedState ? JSON.parse(storedState) as WorkspaceStateSnapshot : null);
 
-        if (snapshot) {
-          if (snapshot.backlogConfig) setBacklogConfig(snapshot.backlogConfig);
-          if (snapshot.boardConfig) setBoardConfig(snapshot.boardConfig);
-          if (snapshot.categoryConfig) setCategoryConfig(snapshot.categoryConfig);
-          if (snapshot.clientConfig) setClientConfig(snapshot.clientConfig);
-          if (typeof snapshot.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
-          if (snapshot.retroConfig) setRetroConfig(snapshot.retroConfig);
-          if (snapshot.sprintConfig) setSprintConfig(snapshot.sprintConfig);
-          if (snapshot.sprintStatusConfig) setSprintStatusConfig(snapshot.sprintStatusConfig);
-        }
+        applyWorkspaceSnapshot(snapshot);
+        setLastWorkspaceUpdatedAt(updatedAt ?? null);
       })
       .catch(() => {
         const storedState = window.localStorage.getItem(workspaceStateStorageKey);
         const snapshot = storedState ? JSON.parse(storedState) as WorkspaceStateSnapshot : null;
-
-        if (snapshot?.backlogConfig) setBacklogConfig(snapshot.backlogConfig);
-        if (snapshot?.boardConfig) setBoardConfig(snapshot.boardConfig);
-        if (snapshot?.categoryConfig) setCategoryConfig(snapshot.categoryConfig);
-        if (snapshot?.clientConfig) setClientConfig(snapshot.clientConfig);
-        if (typeof snapshot?.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
-        if (snapshot?.retroConfig) setRetroConfig(snapshot.retroConfig);
-        if (snapshot?.sprintConfig) setSprintConfig(snapshot.sprintConfig);
-        if (snapshot?.sprintStatusConfig) setSprintStatusConfig(snapshot.sprintStatusConfig);
+        applyWorkspaceSnapshot(snapshot);
       })
       .finally(() => setIsWorkspaceStateLoaded(true));
   }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !isWorkspaceStateLoaded) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      fetch("/api/workspace-state")
+        .then((response) => response.ok ? response.json() : null)
+        .then((state: WorkspaceStateResponse | null) => {
+          if (!state?.updatedAt || state.updatedAt === lastWorkspaceUpdatedAt) {
+            return;
+          }
+
+          applyWorkspaceSnapshot(state.data);
+          setLastWorkspaceUpdatedAt(state.updatedAt);
+        })
+        .catch(() => undefined);
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isAuthenticated, isWorkspaceStateLoaded, lastWorkspaceUpdatedAt]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isWorkspaceStateLoaded) {
+      return;
+    }
+
+    if (skipNextWorkspaceSaveRef.current) {
+      skipNextWorkspaceSaveRef.current = false;
       return;
     }
 
@@ -817,7 +846,12 @@ export function App() {
         body: JSON.stringify(snapshot),
         headers: { "Content-Type": "application/json" },
         method: "PUT"
-      }).catch(() => undefined);
+      })
+        .then((response) => response.ok ? response.json() : null)
+        .then((state: WorkspaceStateResponse | null) => {
+          if (state?.updatedAt) setLastWorkspaceUpdatedAt(state.updatedAt);
+        })
+        .catch(() => undefined);
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
@@ -870,7 +904,11 @@ export function App() {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={(email) => { setAuthenticatedEmail(email); setIsAuthenticated(true); }} />;
+    return <LoginPage onLogin={(email) => {
+      window.localStorage.setItem(authSessionStorageKey, email);
+      setAuthenticatedEmail(email);
+      setIsAuthenticated(true);
+    }} />;
   }
 
   if (!activeProduct) {
@@ -880,10 +918,12 @@ export function App() {
   const sessionValue: SessionContextValue = {
     activeProduct,
     activeProductId,
+    currentMember,
     currentPermission,
     isAdmin,
     products,
     onLogout: () => {
+      window.localStorage.removeItem(authSessionStorageKey);
       setIsAuthenticated(false);
       setPage("board");
     },
@@ -923,6 +963,7 @@ export function App() {
         <BoardPage
           columns={boardConfig}
           initialVisibleTabs={initialVisibleTabs}
+          members={activeProduct.members}
           onColumnsChange={setBoardConfig}
           onCardMovedToColumn={(cardTitle, columnTitle) => {
             const outgoingBacklogTarget = getOutgoingBoardConnection(boardConfig, columnTitle, "Backlog")?.targetId;
@@ -993,6 +1034,11 @@ export function App() {
 
 function toggleTheme(currentTheme: Theme): Theme {
   return currentTheme === "dark" ? "light" : "dark";
+}
+
+function getInitials(name?: string) {
+  const [firstName = "", lastName = ""] = (name ?? "").trim().split(/\s+/);
+  return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase() || "GF";
 }
 
 function LoginPage({ onLogin }: { onLogin: (email: string) => void }) {
@@ -1899,13 +1945,13 @@ function ReportsPage({
         <ExecutionTimeChart
           periodEnd={periodEnd}
           periodStart={periodStart}
-          rows={backlogColumns.map((column, index) => ({ label: column.title, value: 8 + index * 5, color: getBoardColorHex(column.color) }))}
+          rows={backlogColumns.map((column) => ({ label: column.title, value: 0, color: getBoardColorHex(column.color) }))}
           columns={backlogColumns}
           onPeriodEndChange={setPeriodEnd}
           onPeriodStartChange={setPeriodStart}
         />
-        <ReportChart title="Media no Backlog" subtitle="Tempo medio por aba" rows={backlogColumns.map((column, index) => ({ label: column.title, value: 2 + index * 3, color: getBoardColorHex(column.color) }))} />
-        <ReportChart title="Media no Board" subtitle="Local dos cards no sistema" rows={boardColumns.map((column, index) => ({ label: column.title, value: 1 + index * 4, color: getBoardColorHex(column.color) }))} />
+        <ReportChart title="Media no Backlog" subtitle="Tempo medio por aba" rows={backlogColumns.map((column) => ({ label: column.title, value: 0, color: getBoardColorHex(column.color) }))} />
+        <ReportChart title="Media no Board" subtitle="Local dos cards no sistema" rows={boardColumns.map((column) => ({ label: column.title, value: 0, color: getBoardColorHex(column.color) }))} />
         <ReportChart title="Categorias" subtitle="Proporcao de tarefas" rows={categoryRows} />
         <ReportChart title="Clientes" subtitle="Distribuicao por cliente" rows={clientRows} />
         <RollbackChart />
@@ -2114,9 +2160,9 @@ function ExecutionTimeChart({
         </div>
       </header>
       <div className="report-stat-strip">
-        <span><strong>12,4</strong>Tempo medio</span>
-        <span><strong>9,1</strong>Mediana</span>
-        <span><strong>45,2</strong>Maximo</span>
+        <span><strong>0</strong>Tempo medio</span>
+        <span><strong>0</strong>Mediana</span>
+        <span><strong>0</strong>Maximo</span>
       </div>
       <div className="bar-chart">
         {rows.map((row) => (
@@ -2156,8 +2202,8 @@ function ReportChart({ title, subtitle, rows }: { title: string; subtitle: strin
         <header><h2>{title}</h2><span>{subtitle}</span></header>
         <div className="report-mini-table">
           <div><span>Etapa</span><span>Media</span><span>% ciclo</span><span>WIP</span></div>
-          {rows.map((row, index) => (
-            <div key={row.label}><span><i style={{ background: row.color }} />{row.label}</span><span>{row.value},2</span><span>{Math.max(1, 22 - index * 3)}%</span><strong>{18 + index * 2}</strong></div>
+          {rows.map((row) => (
+            <div key={row.label}><span><i style={{ background: row.color }} />{row.label}</span><span>{row.value}</span><span>0%</span><strong>0</strong></div>
           ))}
         </div>
       </article>
@@ -2172,9 +2218,9 @@ function ReportChart({ title, subtitle, rows }: { title: string; subtitle: strin
       </header>
       {title.includes("Tempo") && (
         <div className="report-stat-strip">
-          <span><strong>12,4</strong>Tempo medio</span>
-          <span><strong>9,1</strong>Mediana</span>
-          <span><strong>45,2</strong>Maximo</span>
+          <span><strong>0</strong>Tempo medio</span>
+          <span><strong>0</strong>Mediana</span>
+          <span><strong>0</strong>Maximo</span>
         </div>
       )}
       <div className="bar-chart">
@@ -2192,13 +2238,13 @@ function ReportChart({ title, subtitle, rows }: { title: string; subtitle: strin
 
 function RollbackChart() {
   const rollbackData = [
-    { date: "01/05", backlog: 12, board: 8 },
-    { date: "06/05", backlog: 18, board: 11 },
-    { date: "11/05", backlog: 14, board: 9 },
-    { date: "16/05", backlog: 24, board: 15 },
-    { date: "21/05", backlog: 19, board: 13 },
-    { date: "26/05", backlog: 30, board: 20 },
-    { date: "31/05", backlog: 25, board: 17 }
+    { date: "01/05", backlog: 0, board: 0 },
+    { date: "06/05", backlog: 0, board: 0 },
+    { date: "11/05", backlog: 0, board: 0 },
+    { date: "16/05", backlog: 0, board: 0 },
+    { date: "21/05", backlog: 0, board: 0 },
+    { date: "26/05", backlog: 0, board: 0 },
+    { date: "31/05", backlog: 0, board: 0 }
   ];
 
   return (
@@ -3333,8 +3379,12 @@ function syncBacklogIssueUpdate(item: BacklogItem, status?: string) {
     linearUrl: item.linearUrl,
     title: item.name,
     description: item.description,
+    sprint: item.sprint,
+    category: item.category,
+    client: item.client,
     priority: item.priority,
     estimate: getIssueEstimate(item.storyPoints ?? item.estimate),
+    storyPoints: item.storyPoints,
     owner: item.owner,
     status
   });
@@ -4751,6 +4801,7 @@ function CreateEpicModal({
 function BoardPage({
   columns,
   initialVisibleTabs,
+  members,
   onColumnsChange,
   onCardMovedToColumn,
   onInitialVisibleTabsChange,
@@ -4763,6 +4814,7 @@ function BoardPage({
 }: {
   columns: BoardColumn[];
   initialVisibleTabs: number;
+  members: ProductMember[];
   onColumnsChange: (columns: BoardColumn[]) => void;
   onCardMovedToColumn: (cardTitle: string, columnTitle: string) => void;
   onInitialVisibleTabsChange: (value: number) => void;
@@ -4783,6 +4835,7 @@ function BoardPage({
   const [selectedSprintId, setSelectedSprintId] = useState(activeSprint?.id ?? sprints[0]?.id ?? "");
   const selectedSprint = sprints.find((sprint) => sprint.id === selectedSprintId) ?? activeSprint ?? sprints[0];
   const visibleColumns = mergeBoardColumnsWithSprintConnections(columns, sprintBacklogItems, selectedSprint?.name);
+  const productMemberInitials = members.map((member) => getInitials(member.name));
   const totalItems = visibleColumns.reduce((total, column) => total + column.cards.length, 0);
 
   useEffect(() => {
@@ -4943,7 +4996,7 @@ function BoardPage({
             </div>
           )}
           <div className="board-members" aria-label="Membros da sprint">
-            {boardMembers.map((member) => <span key={member}>{member}</span>)}
+            {productMemberInitials.map((initials) => <span key={initials}>{initials}</span>)}
           </div>
         </div>
         <div className="board-actions">
@@ -6471,7 +6524,8 @@ function Topbar({
   onToggleTheme: () => void;
 }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const { activeProductId, currentPermission, isAdmin, onLogout, onNavigate, onProductChange, products } = useSession();
+  const { activeProductId, currentMember, currentPermission, isAdmin, onLogout, onNavigate, onProductChange, products } = useSession();
+  const profileInitials = getInitials(currentMember?.name);
 
   return (
     <header className="topbar">
@@ -6489,7 +6543,7 @@ function Topbar({
           <Bell size={22} />
         </button>
         <button className="profile-button" type="button" aria-label="Perfil" onClick={() => setIsProfileOpen((current) => !current)}>
-          <span className="avatar">A</span>
+          <span className="avatar">{profileInitials}</span>
           <ChevronDown size={18} />
         </button>
         {isProfileOpen && (
@@ -6614,4 +6668,3 @@ function PanelFooter({ label }: { label: string }) {
     </footer>
   );
 }
-

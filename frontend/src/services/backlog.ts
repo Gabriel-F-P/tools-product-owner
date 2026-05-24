@@ -19,10 +19,14 @@ export interface UpdateIssuePayload {
   linearIssueId?: string;
   title: string;
   description?: string;
+  sprint?: string;
+  category?: string;
+  client?: string;
   linearIdentifier?: string;
   linearUrl?: string;
   priority?: "Alta" | "Media" | "Baixa";
   estimate?: number;
+  storyPoints?: number;
   owner?: string;
   status?: string;
 }
@@ -141,6 +145,14 @@ export function toCreateEpicPayload(epic: Omit<BacklogEpic, "id" | "order" | "cr
 }
 
 function findCreatedIssueRecord(result: unknown): { id?: unknown; identifier?: unknown; url?: unknown } | null {
+  if (typeof result === "string") {
+    try {
+      return findCreatedIssueRecord(JSON.parse(result));
+    } catch {
+      return null;
+    }
+  }
+
   if (!result || typeof result !== "object") {
     return null;
   }
@@ -157,13 +169,21 @@ function findCreatedIssueRecord(result: unknown): { id?: unknown; identifier?: u
   }
 
   const record = result as Record<string, unknown>;
-  const directIssue = record.issue;
+  const directIssue = record.issue ?? record.data ?? record.node;
 
   if (directIssue && typeof directIssue === "object") {
     return directIssue as { id?: unknown; identifier?: unknown; url?: unknown };
   }
 
-  if (typeof record.id === "string" || typeof record.identifier === "string" || typeof record.url === "string") {
+  if (
+    typeof record.id === "string" ||
+    typeof record.issueId === "string" ||
+    typeof record.linearIssueId === "string" ||
+    typeof record.identifier === "string" ||
+    typeof record.linearIdentifier === "string" ||
+    typeof record.url === "string" ||
+    typeof record.linearUrl === "string"
+  ) {
     return record as { id?: unknown; identifier?: unknown; url?: unknown };
   }
 
@@ -184,11 +204,11 @@ export function applyCreatedIssueLink<TItem extends BacklogItem>(item: TItem, re
     return item;
   }
 
-  const issueId = typeof issueRecord.id === "string" && !issueRecord.id.includes("{{") ? issueRecord.id : item.linearIssueId;
-  const identifier = typeof issueRecord.identifier === "string" && !issueRecord.identifier.includes("{{")
-    ? issueRecord.identifier
+  const issueId = getResponseString(issueRecord.id) ?? getResponseString((issueRecord as Record<string, unknown>).issueId) ?? getResponseString((issueRecord as Record<string, unknown>).linearIssueId) ?? item.linearIssueId;
+  const identifier = getResponseString(issueRecord.identifier) ?? getResponseString((issueRecord as Record<string, unknown>).linearIdentifier)
+    ? getResponseString(issueRecord.identifier) ?? getResponseString((issueRecord as Record<string, unknown>).linearIdentifier)
     : item.linearIdentifier;
-  const url = typeof issueRecord.url === "string" && !issueRecord.url.includes("{{") ? issueRecord.url : item.linearUrl;
+  const url = getResponseString(issueRecord.url) ?? getResponseString((issueRecord as Record<string, unknown>).linearUrl) ?? item.linearUrl;
 
   return {
     ...item,
@@ -196,4 +216,8 @@ export function applyCreatedIssueLink<TItem extends BacklogItem>(item: TItem, re
     linearIssueId: issueId,
     linearUrl: url
   };
+}
+
+function getResponseString(value: unknown) {
+  return typeof value === "string" && value.trim() && !value.includes("{{") && value !== "undefined" ? value : undefined;
 }

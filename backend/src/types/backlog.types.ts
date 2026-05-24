@@ -33,10 +33,14 @@ export interface UpdateBacklogIssueInput {
   linearIssueId?: string;
   title: string;
   description?: string;
+  sprint?: string;
+  category?: string;
+  client?: string;
   linearIdentifier?: string;
   linearUrl?: string;
   priority?: BacklogPriority;
   estimate?: number;
+  storyPoints?: number;
   owner?: string;
   status?: string;
   linearStateId?: string;

@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { getWorkspaceState, saveWorkspaceState } from "../services/workspace-state.service.js";
+import { getWorkspaceStateRecord, saveWorkspaceState } from "../services/workspace-state.service.js";
 
 export const workspaceStateRouter = Router();
 
 workspaceStateRouter.get("/", async (_request, response, next) => {
   try {
-    response.json({ data: await getWorkspaceState() });
+    response.json(await getWorkspaceStateRecord());
   } catch (error) {
     next(error);
   }
