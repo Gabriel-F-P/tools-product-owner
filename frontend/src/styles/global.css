@@ -999,6 +999,11 @@ p {
   background: #ffffff;
 }
 
+.board-search-field,
+.sprints-search-field {
+  width: 250px;
+}
+
 .search-field input,
 .create-item-panel input,
 .create-item-panel select,

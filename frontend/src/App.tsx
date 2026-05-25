@@ -2879,6 +2879,7 @@ function BacklogPage({
   const [selectedBacklogTask, setSelectedBacklogTask] = useState<{ columnIndex: number; entryIndex: number; aiConfig: { story: boolean; criteria: boolean; sp: boolean } } | null>(null);
   const [initialVisibleTabs, setInitialVisibleTabs] = useState(4);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [searchTerm, setSearchTerm] = useState("");
   const [draggedEntry, setDraggedEntry] = useState<DraggedBacklogEntry | null>(null);
   const [expandedEpics, setExpandedEpics] = useState<Set<string>>(new Set());
   const [integrationNotice, setIntegrationNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
@@ -2886,6 +2887,20 @@ function BacklogPage({
   const totalEntries = columns.reduce((total, column) => total + column.entries.length, 0);
   const selectedBacklogEntry = selectedBacklogTask ? columns[selectedBacklogTask.columnIndex]?.entries[selectedBacklogTask.entryIndex] : null;
   const selectedBacklogItem = selectedBacklogEntry && !isEpic(selectedBacklogEntry) ? selectedBacklogEntry : null;
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const visibleBacklogColumns = columns.map((column) => ({
+    ...column,
+    entries: column.entries
+      .map((entry, entryIndex) => ({ entry, entryIndex }))
+      .filter(({ entry }) => {
+        if (!normalizedSearchTerm) {
+          return true;
+        }
+
+        const titles = isEpic(entry) ? [entry.name, ...entry.items.map((item) => item.name)] : [entry.name];
+        return titles.some((title) => title.toLowerCase().includes(normalizedSearchTerm));
+      })
+  }));
 
   async function handleCreateEpic(epic: Omit<BacklogEpic, "id" | "order" | "createdAt">) {
     try {
@@ -3177,7 +3192,7 @@ function BacklogPage({
             <div className="backlog-toolbar">
               <label className="search-field">
                 <Search size={18} />
-                <input placeholder="Buscar no backlog..." />
+                <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar titulo do card..." />
                 <ListFilter size={18} />
               </label>
               <div className="backlog-actions">
@@ -3216,8 +3231,8 @@ function BacklogPage({
               aria-label="Abas do backlog"
               style={{ "--board-column-width": `calc((100% - ${(Math.max(initialVisibleTabs, 1) - 1) * 8 + 32}px) / ${Math.max(initialVisibleTabs, 1)})` } as CSSProperties}
             >
-              {columns.map((column, columnIndex) => (
-                <article className={`kanban-column backlog-tab-column ${column.color}`} key={`${column.title}-${columnIndex}`} onDragOver={handleBacklogDragOver} onDrop={(event) => handleBacklogDrop(event, columnIndex, column.entries.length)}>
+              {visibleBacklogColumns.map((column, columnIndex) => (
+                <article className={`kanban-column backlog-tab-column ${column.color}`} key={`${column.title}-${columnIndex}`} onDragOver={handleBacklogDragOver} onDrop={(event) => handleBacklogDrop(event, columnIndex, columns[columnIndex]?.entries.length ?? column.entries.length)}>
                   <header className="kanban-column-header">
                     <span className={`column-icon ${column.color}`}>{renderBoardIcon(column.icon, 15)}</span>
                     <h2>{column.title}</h2>
@@ -3247,7 +3262,7 @@ function BacklogPage({
                   </header>
 
                   <div className="kanban-card-list">
-                    {column.entries.map((entry, entryIndex) => (
+                    {column.entries.map(({ entry, entryIndex }) => (
                       <BacklogTabEntryCard
                         entry={entry}
                         categories={categories}
@@ -4049,6 +4064,7 @@ function BacklogCalendarView({
   categories,
   clients,
   members,
+  searchTerm,
   sprints,
   statuses,
   viewMode,
@@ -4060,6 +4076,7 @@ function BacklogCalendarView({
   categories: CategoryConfig[];
   clients: ClientAccount[];
   members: ProductMember[];
+  searchTerm: string;
   sprints: SprintPlan[];
   statuses: SprintStatus[];
   viewMode: ViewMode;
@@ -4073,6 +4090,7 @@ function BacklogCalendarView({
   const [capacitySprint, setCapacitySprint] = useState<SprintPlan | null>(null);
   const [estimatingSprintId, setEstimatingSprintId] = useState<string | null>(null);
   const activeStatus = statuses.find((status) => status.name === "Em andamento");
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
 
   useEffect(() => {
     currentSprintRef.current?.scrollIntoView({
@@ -4097,7 +4115,7 @@ function BacklogCalendarView({
   return (
     <div className={`sprints-calendar ${viewMode === "list" ? "list-view" : ""}`}>
       {sprints.map((sprint) => {
-        const items = backlogItems.filter((item) => item.sprint === sprint.name);
+        const items = backlogItems.filter((item) => item.sprint === sprint.name && (!normalizedSearchTerm || item.name.toLowerCase().includes(normalizedSearchTerm)));
         const status = statuses.find((currentStatus) => currentStatus.id === sprint.statusId) ?? statuses[0];
         const isActiveSprint = activeStatus ? sprint.statusId === activeStatus.id : sprint.name === currentSprint;
         const pointsBreakdown = getSprintPointBreakdown(sprint, items);
@@ -4250,6 +4268,7 @@ function SprintsPage({
 }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [searchTerm, setSearchTerm] = useState("");
 
   return (
     <main className="dashboard sprints-page">
@@ -4262,13 +4281,17 @@ function SprintsPage({
             <p>Itens entram aqui a partir da aba vinculada no Backlog.</p>
           </div>
           <div className="sprints-actions">
+            <label className="search-field sprints-search-field">
+              <Search size={18} />
+              <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar titulo do card..." />
+            </label>
             <ViewModeToggle value={viewMode} onChange={setViewMode} />
             <button className="square-action" type="button" onClick={() => setIsSettingsOpen(true)} aria-label="Configurar sprints" title="Configurar sprints">
               <Settings size={18} />
             </button>
           </div>
         </header>
-        <BacklogCalendarView backlogItems={backlogItems} categories={categories} clients={clients} members={members} sprints={sprints} statuses={statuses} viewMode={viewMode} onSprintsChange={onSprintsChange} onUpdateItemEstimate={onUpdateItemEstimate} onUpdateSprintEstimates={onUpdateSprintEstimates} />
+        <BacklogCalendarView backlogItems={backlogItems} categories={categories} clients={clients} members={members} searchTerm={searchTerm} sprints={sprints} statuses={statuses} viewMode={viewMode} onSprintsChange={onSprintsChange} onUpdateItemEstimate={onUpdateItemEstimate} onUpdateSprintEstimates={onUpdateSprintEstimates} />
       </section>
       {isSettingsOpen && (
         <SprintSettingsModal
@@ -4993,6 +5016,7 @@ function BoardPage({
   const [createTargetColumnIndex, setCreateTargetColumnIndex] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [selectedBoardCardTarget, setSelectedBoardCardTarget] = useState<{ columnIndex: number; cardIndex: number } | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ columnIndex: number; cardIndex: number; title: string } | null>(null);
   const [integrationNotice, setIntegrationNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
@@ -5000,11 +5024,12 @@ function BoardPage({
   const [selectedSprintId, setSelectedSprintId] = useState(activeSprint?.id ?? sprints[0]?.id ?? "");
   const selectedSprint = sprints.find((sprint) => sprint.id === selectedSprintId) ?? activeSprint ?? sprints[0];
   const visibleColumns = mergeBoardColumnsWithSprintConnections(columns, sprintBacklogItems, selectedSprint?.name);
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const filteredColumns = visibleColumns.map((column) => ({
     ...column,
     cards: column.cards
       .map((card, cardIndex) => ({ card, cardIndex }))
-      .filter(({ card }) => !ownerFilter || card.owner === ownerFilter)
+      .filter(({ card }) => (!ownerFilter || card.owner === ownerFilter) && (!normalizedSearchTerm || card.title.toLowerCase().includes(normalizedSearchTerm)))
   }));
   const productMemberInitials = members.map((member) => getInitials(member.name));
   const totalItems = filteredColumns.reduce((total, column) => total + column.cards.length, 0);
@@ -5249,6 +5274,10 @@ function BoardPage({
           </div>
         </div>
         <div className="board-actions">
+          <label className="search-field board-search-field">
+            <Search size={18} />
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar titulo do card..." />
+          </label>
           <label className="board-filter-control">
             <ListFilter size={18} />
             <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filtrar por responsavel">
