@@ -16,6 +16,13 @@ interface CreatedLinearIssue {
   identifier: string;
   title: string;
   url: string;
+  description?: string;
+  priority?: BacklogPriority;
+  estimate?: number;
+  owner?: string;
+  sprint?: string;
+  category?: string;
+  client?: string;
 }
 
 interface LinearLabel {
@@ -106,6 +113,29 @@ function createMockIssue(input: CreateBacklogIssueInput): CreatedLinearIssue {
     title: input.name,
     url: `https://linear.app/mock/issue/${identifier}`
   };
+}
+
+function getLinearIdentifierFromUrl(url?: string) {
+  if (!url?.trim()) {
+    return undefined;
+  }
+
+  const match = url.match(/\/([A-Z]+-\d+)(?:\b|$)/i) ?? url.match(/\b([A-Z]+-\d+)\b/i);
+  return match?.[1]?.toUpperCase();
+}
+
+function normalizeIssuePriority(value: unknown): BacklogPriority {
+  const priority = typeof value === "number" ? value : Number(value);
+
+  if (priority <= 2) {
+    return "Alta";
+  }
+
+  if (priority >= 4) {
+    return "Baixa";
+  }
+
+  return "Media";
 }
 
 function buildDescription(input: CreateBacklogIssueInput, epicName?: string) {
@@ -347,6 +377,89 @@ async function findLinearIssueByTitle(input: CreateBacklogIssueInput): Promise<C
   );
 
   return data.issues.nodes.find((issue) => issue.title === input.name) ?? data.issues.nodes[0];
+}
+
+async function findLinkedLinearIssue(input: CreateBacklogIssueInput): Promise<CreatedLinearIssue | undefined> {
+  const config = getLinearConfig(input);
+  const identifier = input.linearIdentifier ?? getLinearIdentifierFromUrl(input.linearUrl);
+  const issueId = input.linearIssueId;
+
+  if (!config.apiKey || (!identifier && !issueId && !input.linearUrl)) {
+    return undefined;
+  }
+
+  const client = createLinearClient({ apiKey: config.apiKey });
+  const data = await client.request<{
+    issues: {
+      nodes: Array<{
+        id: string;
+        identifier: string;
+        title: string;
+        description?: string | null;
+        priority?: number | null;
+        estimate?: number | null;
+        url: string;
+        assignee?: { name?: string | null; displayName?: string | null; email?: string | null } | null;
+        cycle?: { name?: string | null } | null;
+        labels?: { nodes: Array<{ name: string }> };
+      }>;
+    };
+  }>(
+    `
+      query FindLinkedIssue($term: String!) {
+        issues(first: 10, filter: { or: [
+          { id: { eq: $term } },
+          { identifier: { eq: $term } },
+          { url: { eq: $term } }
+        ] }) {
+          nodes {
+            id
+            identifier
+            title
+            description
+            priority
+            estimate
+            url
+            assignee {
+              name
+              displayName
+              email
+            }
+            cycle {
+              name
+            }
+            labels {
+              nodes {
+                name
+              }
+            }
+          }
+        }
+      }
+    `,
+    { term: issueId ?? identifier ?? input.linearUrl ?? "" }
+  );
+  const issue = data.issues.nodes[0];
+
+  if (!issue) {
+    return undefined;
+  }
+
+  const labels = issue.labels?.nodes.map((label) => label.name) ?? [];
+
+  return {
+    id: issue.id,
+    identifier: issue.identifier,
+    title: issue.title,
+    url: issue.url,
+    description: issue.description ?? undefined,
+    priority: normalizeIssuePriority(issue.priority),
+    estimate: issue.estimate ?? undefined,
+    owner: issue.assignee?.displayName ?? issue.assignee?.name ?? issue.assignee?.email ?? undefined,
+    sprint: issue.cycle?.name ?? undefined,
+    category: labels[0],
+    client: labels[1]
+  };
 }
 
 async function findLinearIssueByTitleWithRetry(input: CreateBacklogIssueInput) {
@@ -658,9 +771,22 @@ async function archiveN8nIssue(input: ArchiveBacklogIssueInput) {
 
 export async function createBacklogIssue(input: CreateBacklogIssueInput) {
   if (input.linearUrl || input.linearIssueId || input.linearIdentifier) {
+    let issue: CreatedLinearIssue | undefined;
+
+    try {
+      issue = await findLinkedLinearIssue(input);
+      console.log("linear linked issue lookup", JSON.stringify(issue ?? null));
+    } catch (error) {
+      console.log("linear linked issue lookup failed", error instanceof Error ? error.message : String(error));
+    }
+
+    if (issue) {
+      createdIssuesByTitle.set(input.name, issue);
+    }
+
     return {
-      mode: "linked",
-      issue: createMockIssue(input)
+      mode: issue ? "linked-linear" : "linked",
+      issue: issue ?? createMockIssue(input)
     };
   }
 

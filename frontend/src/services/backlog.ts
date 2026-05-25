@@ -145,7 +145,7 @@ export function toCreateEpicPayload(epic: Omit<BacklogEpic, "id" | "order" | "cr
   };
 }
 
-function findCreatedIssueRecord(result: unknown): { id?: unknown; identifier?: unknown; url?: unknown } | null {
+function findCreatedIssueRecord(result: unknown): Record<string, unknown> | null {
   if (typeof result === "string") {
     try {
       return findCreatedIssueRecord(JSON.parse(result));
@@ -173,7 +173,7 @@ function findCreatedIssueRecord(result: unknown): { id?: unknown; identifier?: u
   const directIssue = record.issue ?? record.data ?? record.node;
 
   if (directIssue && typeof directIssue === "object") {
-    return directIssue as { id?: unknown; identifier?: unknown; url?: unknown };
+    return directIssue as Record<string, unknown>;
   }
 
   if (
@@ -185,7 +185,7 @@ function findCreatedIssueRecord(result: unknown): { id?: unknown; identifier?: u
     typeof record.url === "string" ||
     typeof record.linearUrl === "string"
   ) {
-    return record as { id?: unknown; identifier?: unknown; url?: unknown };
+    return record;
   }
 
   for (const value of Object.values(record)) {
@@ -210,9 +210,25 @@ export function applyCreatedIssueLink<TItem extends BacklogItem>(item: TItem, re
     ? getResponseString(issueRecord.identifier) ?? getResponseString((issueRecord as Record<string, unknown>).linearIdentifier)
     : item.linearIdentifier;
   const url = getResponseString(issueRecord.url) ?? getResponseString((issueRecord as Record<string, unknown>).linearUrl) ?? item.linearUrl;
+  const title = getResponseString(issueRecord.title) ?? getResponseString(issueRecord.name);
+  const description = getResponseString(issueRecord.description);
+  const owner = getResponseString(issueRecord.owner) ?? getResponseString(issueRecord.assignee);
+  const sprint = getResponseString(issueRecord.sprint);
+  const category = getResponseString(issueRecord.category);
+  const client = getResponseString(issueRecord.client);
+  const priority = getPriorityValue(issueRecord.priority) ?? item.priority;
+  const storyPoints = getNumberValue(issueRecord.storyPoints) ?? getNumberValue(issueRecord.estimate);
 
   return {
     ...item,
+    name: title ?? item.name,
+    description: description ?? item.description,
+    owner: owner ?? item.owner,
+    sprint: sprint ?? item.sprint,
+    category: category ?? item.category,
+    client: client ?? item.client,
+    priority,
+    storyPoints: storyPoints ?? item.storyPoints,
     linearIdentifier: identifier,
     linearIssueId: issueId,
     linearUrl: url
@@ -221,4 +237,31 @@ export function applyCreatedIssueLink<TItem extends BacklogItem>(item: TItem, re
 
 function getResponseString(value: unknown) {
   return typeof value === "string" && value.trim() && !value.includes("{{") && value !== "undefined" ? value : undefined;
+}
+
+function getNumberValue(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : undefined;
+}
+
+function getPriorityValue(value: unknown): BacklogItem["priority"] | undefined {
+  if (value === "Alta" || value === "Media" || value === "Baixa") {
+    return value;
+  }
+
+  const priority = Number(value);
+
+  if (!Number.isFinite(priority)) {
+    return undefined;
+  }
+
+  if (priority <= 2) {
+    return "Alta";
+  }
+
+  if (priority >= 4) {
+    return "Baixa";
+  }
+
+  return "Media";
 }
