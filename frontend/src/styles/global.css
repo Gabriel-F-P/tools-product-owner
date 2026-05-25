@@ -1099,17 +1099,13 @@ p {
 }
 
 .kanban-board.backlog-tabs-board {
-  grid-auto-columns: minmax(190px, var(--board-column-width, 300px));
-  width: calc(100% - 32px);
-  max-width: calc(100% - 32px);
-  margin: 0 16px;
-  overflow-x: auto;
-  padding: 4px 16px 14px;
-  scroll-padding-inline: 16px;
+  grid-auto-columns: minmax(170px, min(210px, var(--board-column-width, 210px)));
+  padding: 4px 8px 10px;
+  scroll-padding-inline: 8px;
 }
 
 .backlog-tab-column {
-  min-height: 620px;
+  min-height: 520px;
 }
 
 .column-create-wrap {
@@ -1119,8 +1115,8 @@ p {
 }
 
 .kanban-column-header .column-create-button {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   margin-left: 0;
   border-radius: 7px;
   color: var(--column-color, #344056);
@@ -1160,7 +1156,7 @@ p {
 
 .backlog-tab-card small {
   color: #657187;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1168,9 +1164,9 @@ p {
   display: flex;
   justify-content: flex-start;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 5px;
   color: #657187;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 720;
 }
 
@@ -1409,12 +1405,11 @@ input[type="checkbox"] {
 .sprints-calendar {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(380px, 460px);
-  gap: 16px;
-  overflow-x: auto;
+  grid-auto-columns: minmax(230px, 260px);
+  gap: 8px;
   overscroll-behavior-inline: contain;
-  padding: 0 16px 20px;
-  scroll-padding-inline: calc(50% - 230px);
+  padding: 0 8px 10px;
+  scroll-padding-inline: 8px;
 }
 
 .sprints-calendar.list-view .sprint-calendar-section {
@@ -1424,18 +1419,18 @@ input[type="checkbox"] {
 .sprint-calendar-section {
   display: grid;
   align-content: start;
-  gap: 14px;
-  min-height: 640px;
-  padding: 16px 18px 18px;
+  gap: 8px;
+  min-height: 520px;
+  padding: 10px;
   border: 1px solid color-mix(in srgb, var(--sprint-status-color, #7a5af8) 52%, #e8ecf3);
-  border-top: 4px solid var(--sprint-status-color, #7a5af8);
+  border-top: 3px solid var(--sprint-status-color, #7a5af8);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.64);
 }
 
 .sprint-calendar-section.current {
   border-width: 2px;
-  border-top-width: 6px;
+  border-top-width: 4px;
   border-color: color-mix(in srgb, var(--sprint-status-color, #7357ff) 72%, #e8ecf3);
   border-top-color: var(--sprint-status-color, #7357ff);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(246, 244, 255, 0.86));
@@ -1444,16 +1439,16 @@ input[type="checkbox"] {
 
 .sprint-header-strip {
   display: grid;
-  gap: 10px;
-  padding-bottom: 14px;
+  gap: 7px;
+  padding-bottom: 8px;
   border-bottom: 1px solid #dfe5ef;
 }
 
 .sprint-header-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, 150px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, 110px) auto;
   align-items: start;
-  gap: 10px;
+  gap: 6px;
 }
 
 .sprint-calendar-section h3,
@@ -1462,14 +1457,14 @@ input[type="checkbox"] {
 }
 
 .sprint-calendar-section h3 {
-  font-size: 18px;
+  font-size: 13px;
 }
 
 .sprint-header-main small {
   display: block;
-  margin-top: 10px;
+  margin-top: 5px;
   color: #657187;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 720;
   white-space: nowrap;
 }
@@ -1478,17 +1473,17 @@ input[type="checkbox"] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 5px;
+  margin-top: 4px;
   color: #657187;
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .sprint-points-button {
   display: inline-flex;
-  min-height: 24px;
+  min-height: 20px;
   align-items: center;
-  padding: 0 9px;
+  padding: 0 6px;
   border: 1px solid color-mix(in srgb, var(--sprint-status-color, #7357ff) 38%, #dbe2ec);
   border-radius: 999px;
   background: color-mix(in srgb, var(--sprint-status-color, #7357ff) 10%, #ffffff);
@@ -1506,24 +1501,24 @@ input[type="checkbox"] {
 .sprint-header-actions {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 5px;
 }
 
 .sprint-header-metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 5px;
 }
 
 .sprint-status-trigger {
   display: inline-flex;
   width: 100%;
   min-width: 0;
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 10px;
+  gap: 5px;
+  padding: 0 7px;
   border: 1px solid color-mix(in srgb, var(--sprint-status-color, #7357ff) 42%, #dbe2ec);
   border-radius: 7px;
   background: #ffffff;
@@ -1606,26 +1601,26 @@ input[type="checkbox"] {
 .sprint-items-count {
   display: inline-flex;
   width: fit-content;
-  min-height: 28px;
+  min-height: 22px;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 7px;
   border-radius: 999px;
   color: var(--sprint-status-color, #4d35e8);
   background: color-mix(in srgb, var(--sprint-status-color, #4d35e8) 12%, #ffffff);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 760;
 }
 
 .sprint-objective {
   display: grid;
-  gap: 6px;
-  padding-bottom: 14px;
+  gap: 4px;
+  padding-bottom: 8px;
   border-bottom: 1px dashed #d8e0ec;
 }
 
 .sprint-objective span {
   color: var(--sprint-status-color, #4d35e8);
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 840;
   text-transform: uppercase;
 }
@@ -1634,22 +1629,22 @@ input[type="checkbox"] {
   display: block;
   margin: 0;
   color: #344056;
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .sprint-objective textarea,
 .board-sprint-meta textarea {
   width: 100%;
-  min-height: 38px;
+  min-height: 28px;
   padding: 0;
   border: 0;
   background: transparent;
   color: #344056;
   font: inherit;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 650;
-  line-height: 1.45;
+  line-height: 1.3;
   resize: vertical;
 }
 
@@ -1662,14 +1657,14 @@ input[type="checkbox"] {
 .calendar-item-list {
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 7px;
 }
 
 .calendar-item-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  padding: 16px 16px 0;
+  padding: 10px 10px 0;
   border: 1px solid #e3e8f0;
   border-radius: 8px;
   background: #ffffff;
@@ -1704,18 +1699,18 @@ input[type="checkbox"] {
   display: grid;
   place-items: center;
   align-content: center;
-  min-height: 58px;
+  min-height: 42px;
   border-radius: 8px;
   color: #4d35e8;
   background: #f4f1ff;
 }
 
 .calendar-date strong {
-  font-size: 20px;
+  font-size: 16px;
 }
 
 .calendar-date span {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 760;
 }
 
@@ -1759,7 +1754,7 @@ input[type="checkbox"] {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
   outline: 0;
 }
@@ -4882,16 +4877,61 @@ input[type="checkbox"] {
   font-weight: 800;
 }
 
-.kanban-board {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 340px;
-  gap: 12px;
+.dual-scroll-frame {
   width: min(1530px, 100%);
   max-width: 1530px;
   margin: 0 auto;
+}
+
+.backlog-scroll-frame {
+  width: calc(100% - 32px);
+  max-width: calc(100% - 32px);
+}
+
+.dual-scrollbar,
+.dual-scroll-content {
   overflow-x: auto;
-  padding: 0 0 14px;
+  overscroll-behavior-inline: contain;
+}
+
+.dual-scrollbar {
+  height: 12px;
+  margin-bottom: 6px;
+}
+
+.dual-scrollbar > div {
+  height: 1px;
+}
+
+.dual-scroll-content {
+  padding-bottom: 2px;
+}
+
+.dual-scrollbar::-webkit-scrollbar,
+.dual-scroll-content::-webkit-scrollbar {
+  height: 10px;
+}
+
+.dual-scrollbar::-webkit-scrollbar-thumb,
+.dual-scroll-content::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c8d2e3;
+}
+
+.dual-scrollbar::-webkit-scrollbar-track,
+.dual-scroll-content::-webkit-scrollbar-track {
+  background: #edf1f7;
+}
+
+.kanban-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 220px;
+  gap: 8px;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  padding: 0 0 10px;
   overscroll-behavior-inline: contain;
 }
 
@@ -4911,8 +4951,8 @@ input[type="checkbox"] {
 .kanban-column {
   display: flex;
   flex-direction: column;
-  min-height: 700px;
-  padding: 18px 16px 14px;
+  min-height: 560px;
+  padding: 10px 8px;
   border: 1px solid #e1e6ef;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
@@ -4995,16 +5035,16 @@ input[type="checkbox"] {
 .kanban-column.teal .kanban-column-header,
 .kanban-column.indigo .kanban-column-header,
 .kanban-column.slate .kanban-column-header {
-  padding-bottom: 12px;
+  padding-bottom: 7px;
   border-bottom: 2px solid var(--column-color);
 }
 
 .kanban-column-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  margin-bottom: 14px;
+  gap: 6px;
+  min-height: 28px;
+  margin-bottom: 8px;
 }
 
 .kanban-column-header h2 {
@@ -5018,18 +5058,18 @@ input[type="checkbox"] {
 .column-icon {
   display: grid;
   place-items: center;
-  flex: 0 0 26px;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   color: #ffffff;
 }
 
 .column-count {
   display: grid;
   place-items: center;
-  min-width: 22px;
-  height: 22px;
+  min-width: 18px;
+  height: 18px;
   border-radius: 999px;
   color: #526079;
   background: #eef2f7;
@@ -5088,13 +5128,13 @@ input[type="checkbox"] {
 .kanban-card-list {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 8px;
 }
 
 .kanban-card {
   display: grid;
-  min-height: 220px;
-  padding: 16px 16px 0;
+  min-height: 130px;
+  padding: 10px 10px 0;
   border: 1px solid #e3e8f0;
   border-radius: 8px;
   background: #ffffff;
@@ -5132,21 +5172,21 @@ input[type="checkbox"] {
 
 .kanban-card header {
   color: #526079;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 650;
 }
 
 .card-header-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
 
 .card-delete-button {
   display: inline-grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 28px;
+  height: 28px;
   border: 1px solid #e0e7f3;
   border-radius: 8px;
   color: #8a1630;
@@ -5170,18 +5210,22 @@ input[type="checkbox"] {
 }
 
 .kanban-card h3 {
-  min-height: 56px;
-  margin: 10px 0 22px;
+  display: -webkit-box;
+  min-height: 34px;
+  margin: 7px 0 10px;
+  overflow: hidden;
   color: #101b31;
-  font-size: 24px;
-  line-height: 1.15;
+  font-size: 15px;
+  line-height: 1.12;
   font-weight: 820;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .kanban-card-id {
   margin-top: 7px;
   color: #7b8799;
-  font-size: 15px;
+  font-size: 10px;
   font-weight: 650;
 }
 
@@ -5359,9 +5403,9 @@ input[type="checkbox"] {
 
 .kanban-card footer {
   align-self: end;
-  gap: 10px;
-  margin: 0 -16px;
-  padding: 14px 14px;
+  gap: 5px;
+  margin: 0 -10px;
+  padding: 8px;
   border-top: 1px solid #edf1f7;
   background: #f8faff;
   justify-content: flex-start;
@@ -5371,25 +5415,25 @@ input[type="checkbox"] {
 .owner-pill {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   color: #ffffff;
   background: linear-gradient(135deg, #8464f5, #5a45dd);
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 800;
 }
 
 .board-card-pill {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 24px;
   align-items: center;
-  gap: 7px;
-  padding: 0 11px;
-  border-radius: 8px;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: 6px;
   background: #f0f3ff;
   color: #253149;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
 }

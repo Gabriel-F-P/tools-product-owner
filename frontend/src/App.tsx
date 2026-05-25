@@ -2950,6 +2950,62 @@ function RetroCeremony({ retrospectives, onRetrospectivesChange }: { retrospecti
   );
 }
 
+function DualHorizontalScroll({ children, className = "" }: { children: ReactNode; className?: string }) {
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const spacerRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingScroll = useRef(false);
+
+  useEffect(() => {
+    const contentScroll = contentScrollRef.current;
+    const spacer = spacerRef.current;
+
+    if (!contentScroll || !spacer) {
+      return;
+    }
+
+    const updateScrollWidth = () => {
+      spacer.style.width = `${contentScroll.scrollWidth}px`;
+    };
+
+    updateScrollWidth();
+    const resizeObserver = new ResizeObserver(updateScrollWidth);
+    resizeObserver.observe(contentScroll);
+    if (contentScroll.firstElementChild) {
+      resizeObserver.observe(contentScroll.firstElementChild);
+    }
+    window.addEventListener("resize", updateScrollWidth);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateScrollWidth);
+    };
+  }, [children]);
+
+  function syncScroll(source: HTMLDivElement, target: HTMLDivElement | null) {
+    if (!target || isSyncingScroll.current) {
+      return;
+    }
+
+    isSyncingScroll.current = true;
+    target.scrollLeft = source.scrollLeft;
+    window.requestAnimationFrame(() => {
+      isSyncingScroll.current = false;
+    });
+  }
+
+  return (
+    <div className={`dual-scroll-frame ${className}`}>
+      <div className="dual-scrollbar top" ref={topScrollRef} onScroll={(event) => syncScroll(event.currentTarget, contentScrollRef.current)}>
+        <div ref={spacerRef} />
+      </div>
+      <div className="dual-scroll-content" ref={contentScrollRef} onScroll={(event) => syncScroll(event.currentTarget, topScrollRef.current)}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function BacklogPage({
   boardColumns,
   categories,
@@ -3331,75 +3387,77 @@ function BacklogPage({
               </div>
             )}
 
-            <section
-              className={`kanban-board backlog-tabs-board ${viewMode === "list" ? "list-view" : ""}`}
-              aria-label="Abas do backlog"
-              style={{ "--board-column-width": `calc((100% - ${(Math.max(initialVisibleTabs, 1) - 1) * 8 + 32}px) / ${Math.max(initialVisibleTabs, 1)})` } as CSSProperties}
-            >
-              {visibleBacklogColumns.map((column, columnIndex) => (
-                <article className={`kanban-column backlog-tab-column ${column.color}`} key={`${column.title}-${columnIndex}`} onDragOver={handleBacklogDragOver} onDrop={(event) => handleBacklogDrop(event, columnIndex, columns[columnIndex]?.entries.length ?? column.entries.length)}>
-                  <header className="kanban-column-header">
-                    <span className={`column-icon ${column.color}`}>{renderBoardIcon(column.icon, 15)}</span>
-                    <h2>{column.title}</h2>
-                    {(column.connections ?? []).some((connection) => connection.screen === "Sprint") && <KanbanSquare className="linked-sprint-icon" size={16} />}
-                    <ColumnDescriptionButton description={column.description} title={column.title} />
-                    <span className="column-count">{column.entries.length}</span>
-                    <span className="column-create-wrap">
-                      <button
-                        className="column-create-button"
-                        type="button"
-                        aria-expanded={createMenuColumnIndex === columnIndex}
-                        aria-label={`Criar item em ${column.title}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setCreateMenuColumnIndex((currentIndex) => currentIndex === columnIndex ? null : columnIndex);
-                        }}
-                      >
-                        <Plus size={17} />
-                      </button>
-                      {createMenuColumnIndex === columnIndex && (
-                        <span className="column-create-menu">
-                          <button type="button" onClick={() => openCreateModal(columnIndex, "task")}>Tarefa</button>
-                          <button type="button" onClick={() => openCreateModal(columnIndex, "epic")}>Epico</button>
-                        </span>
-                      )}
-                    </span>
-                  </header>
+            <DualHorizontalScroll className="backlog-scroll-frame">
+              <section
+                className={`kanban-board backlog-tabs-board ${viewMode === "list" ? "list-view" : ""}`}
+                aria-label="Abas do backlog"
+                style={{ "--board-column-width": `calc((100% - ${(Math.max(initialVisibleTabs, 1) - 1) * 8 + 32}px) / ${Math.max(initialVisibleTabs, 1)})` } as CSSProperties}
+              >
+                {visibleBacklogColumns.map((column, columnIndex) => (
+                  <article className={`kanban-column backlog-tab-column ${column.color}`} key={`${column.title}-${columnIndex}`} onDragOver={handleBacklogDragOver} onDrop={(event) => handleBacklogDrop(event, columnIndex, columns[columnIndex]?.entries.length ?? column.entries.length)}>
+                    <header className="kanban-column-header">
+                      <span className={`column-icon ${column.color}`}>{renderBoardIcon(column.icon, 15)}</span>
+                      <h2>{column.title}</h2>
+                      {(column.connections ?? []).some((connection) => connection.screen === "Sprint") && <KanbanSquare className="linked-sprint-icon" size={16} />}
+                      <ColumnDescriptionButton description={column.description} title={column.title} />
+                      <span className="column-count">{column.entries.length}</span>
+                      <span className="column-create-wrap">
+                        <button
+                          className="column-create-button"
+                          type="button"
+                          aria-expanded={createMenuColumnIndex === columnIndex}
+                          aria-label={`Criar item em ${column.title}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setCreateMenuColumnIndex((currentIndex) => currentIndex === columnIndex ? null : columnIndex);
+                          }}
+                        >
+                          <Plus size={17} />
+                        </button>
+                        {createMenuColumnIndex === columnIndex && (
+                          <span className="column-create-menu">
+                            <button type="button" onClick={() => openCreateModal(columnIndex, "task")}>Tarefa</button>
+                            <button type="button" onClick={() => openCreateModal(columnIndex, "epic")}>Epico</button>
+                          </span>
+                        )}
+                      </span>
+                    </header>
 
-                  <div className="kanban-card-list">
-                    {column.entries.map(({ entry, entryIndex }) => (
-                      <BacklogTabEntryCard
-                        entry={entry}
-                        categories={categories}
-                        members={members}
-                        expanded={isEpic(entry) ? expandedEpics.has(entry.id) : false}
-                        isDragging={draggedEntry?.columnIndex === columnIndex && draggedEntry.entryIndex === entryIndex}
-                        key={isEpic(entry) ? entry.id : `item-${entry.order}`}
-                        onDragEnd={() => setDraggedEntry(null)}
-                        onDragOver={handleBacklogDragOver}
-                        onEpicItemDragStart={(event, itemIndex) => handleBacklogEpicItemDragStart(event, columnIndex, entryIndex, itemIndex)}
-                        onDragStart={(event) => handleBacklogDragStart(event, columnIndex, entryIndex)}
-                        onDrop={(event) => handleBacklogDrop(event, columnIndex, entryIndex)}
-                        onOpenTask={setSelectedTask}
-                        onOpenEntry={() => setSelectedBacklogTask({
-                          aiConfig: {
-                            criteria: !!column.aiCriteriaEnabled,
-                            sp: !!column.aiStoryPointsEnabled,
-                            story: !!column.aiStoryEnabled
-                          },
-                          columnIndex,
-                          entryIndex
-                        })}
-                        onToggleEpic={() => isEpic(entry) && toggleEpic(entry.id)}
-                        onUpdateMeta={(updates) => updateBacklogEntryMeta(columnIndex, entryIndex, updates)}
-                        onSaveLinearLink={(linearUrl) => saveBacklogEntryLinearLink(columnIndex, entryIndex, linearUrl)}
-                        onRequestDelete={() => setDeleteTarget({ columnIndex, entryIndex, title: entry.name })}
-                      />
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </section>
+                    <div className="kanban-card-list">
+                      {column.entries.map(({ entry, entryIndex }) => (
+                        <BacklogTabEntryCard
+                          entry={entry}
+                          categories={categories}
+                          members={members}
+                          expanded={isEpic(entry) ? expandedEpics.has(entry.id) : false}
+                          isDragging={draggedEntry?.columnIndex === columnIndex && draggedEntry.entryIndex === entryIndex}
+                          key={isEpic(entry) ? entry.id : `item-${entry.order}`}
+                          onDragEnd={() => setDraggedEntry(null)}
+                          onDragOver={handleBacklogDragOver}
+                          onEpicItemDragStart={(event, itemIndex) => handleBacklogEpicItemDragStart(event, columnIndex, entryIndex, itemIndex)}
+                          onDragStart={(event) => handleBacklogDragStart(event, columnIndex, entryIndex)}
+                          onDrop={(event) => handleBacklogDrop(event, columnIndex, entryIndex)}
+                          onOpenTask={setSelectedTask}
+                          onOpenEntry={() => setSelectedBacklogTask({
+                            aiConfig: {
+                              criteria: !!column.aiCriteriaEnabled,
+                              sp: !!column.aiStoryPointsEnabled,
+                              story: !!column.aiStoryEnabled
+                            },
+                            columnIndex,
+                            entryIndex
+                          })}
+                          onToggleEpic={() => isEpic(entry) && toggleEpic(entry.id)}
+                          onUpdateMeta={(updates) => updateBacklogEntryMeta(columnIndex, entryIndex, updates)}
+                          onSaveLinearLink={(linearUrl) => saveBacklogEntryLinearLink(columnIndex, entryIndex, linearUrl)}
+                          onRequestDelete={() => setDeleteTarget({ columnIndex, entryIndex, title: entry.name })}
+                        />
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </section>
+            </DualHorizontalScroll>
 
             <footer className="backlog-pagination backlog-tabs-summary">
               <span>Mostrando {totalEntries} registros</span>
@@ -4223,21 +4281,23 @@ function BacklogCalendarView({
   }
 
   return (
-    <div className={`sprints-calendar ${viewMode === "list" ? "list-view" : ""}`}>
-      {sprints.map((sprint) => {
-        const items = backlogItems.filter((item) => item.sprint === sprint.name && (!normalizedSearchTerm || item.name.toLowerCase().includes(normalizedSearchTerm)));
-        const status = statuses.find((currentStatus) => currentStatus.id === sprint.statusId) ?? statuses[0];
-        const isActiveSprint = activeStatus ? sprint.statusId === activeStatus.id : sprint.name === currentSprint;
-        const pointsBreakdown = getSprintPointBreakdown(sprint, items);
-        const capacityTotals = getSprintCapacityTotals(sprint, members);
+    <>
+      <DualHorizontalScroll className="sprints-scroll-frame">
+        <div className={`sprints-calendar ${viewMode === "list" ? "list-view" : ""}`}>
+          {sprints.map((sprint) => {
+            const items = backlogItems.filter((item) => item.sprint === sprint.name && (!normalizedSearchTerm || item.name.toLowerCase().includes(normalizedSearchTerm)));
+            const status = statuses.find((currentStatus) => currentStatus.id === sprint.statusId) ?? statuses[0];
+            const isActiveSprint = activeStatus ? sprint.statusId === activeStatus.id : sprint.name === currentSprint;
+            const pointsBreakdown = getSprintPointBreakdown(sprint, items);
+            const capacityTotals = getSprintCapacityTotals(sprint, members);
 
-        return (
-          <section
-            className={`sprint-calendar-section ${isActiveSprint ? "current" : ""}`}
-            key={sprint.id}
-            ref={isActiveSprint ? currentSprintRef : undefined}
-            style={{ "--sprint-status-color": getBoardColorHex(status.color) } as CSSProperties}
-          >
+            return (
+              <section
+                className={`sprint-calendar-section ${isActiveSprint ? "current" : ""}`}
+                key={sprint.id}
+                ref={isActiveSprint ? currentSprintRef : undefined}
+                style={{ "--sprint-status-color": getBoardColorHex(status.color) } as CSSProperties}
+              >
             <header className="sprint-header-strip">
               <div className="sprint-header-main">
                 <div>
@@ -4324,9 +4384,11 @@ function BacklogCalendarView({
               ))}
               {items.length === 0 && <div className="empty-delivery">Nenhum item vinculado a esta sprint.</div>}
             </div>
-          </section>
-        );
-      })}
+              </section>
+            );
+          })}
+        </div>
+      </DualHorizontalScroll>
       {selectedBreakdown && <SprintPointsModal breakdown={selectedBreakdown} onClose={() => setSelectedBreakdown(null)} />}
       {selectedCapacity && <SprintCapacityBreakdownModal breakdown={selectedCapacity} onClose={() => setSelectedCapacity(null)} />}
       {capacitySprint && (
@@ -4340,7 +4402,7 @@ function BacklogCalendarView({
           sprint={capacitySprint}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -5412,47 +5474,49 @@ function BoardPage({
         </div>
       )}
 
-      <section
-        className="kanban-board"
-        aria-label="Board da sprint"
-      >
-        {filteredColumns.map((column, columnIndex) => (
-          <article className={`kanban-column ${column.color}`} key={column.title} onDragOver={handleDragOver} onDrop={(event) => handleDrop(event, columnIndex, visibleColumns[columnIndex]?.cards.length ?? column.cards.length)}>
-            <header className="kanban-column-header">
-              <span className={`column-icon ${column.color}`}>
-                {renderBoardIcon(column.icon, 15)}
-              </span>
-              <h2>{column.title}</h2>
-              <ColumnDescriptionButton description={column.description} title={column.title} />
-              <span className="column-count">{column.cards.length}</span>
-              <button type="button" aria-label={`Adicionar card em ${column.title}`} onClick={() => setCreateTargetColumnIndex(columnIndex)}>
-                <Plus size={18} />
+      <DualHorizontalScroll className="board-scroll-frame">
+        <section
+          className="kanban-board"
+          aria-label="Board da sprint"
+        >
+          {filteredColumns.map((column, columnIndex) => (
+            <article className={`kanban-column ${column.color}`} key={column.title} onDragOver={handleDragOver} onDrop={(event) => handleDrop(event, columnIndex, visibleColumns[columnIndex]?.cards.length ?? column.cards.length)}>
+              <header className="kanban-column-header">
+                <span className={`column-icon ${column.color}`}>
+                  {renderBoardIcon(column.icon, 15)}
+                </span>
+                <h2>{column.title}</h2>
+                <ColumnDescriptionButton description={column.description} title={column.title} />
+                <span className="column-count">{column.cards.length}</span>
+                <button type="button" aria-label={`Adicionar card em ${column.title}`} onClick={() => setCreateTargetColumnIndex(columnIndex)}>
+                  <Plus size={18} />
+                </button>
+              </header>
+
+              <div className="kanban-card-list">
+                {column.cards.map(({ card, cardIndex }) => (
+                  <BoardCardItem
+                    card={card}
+                    isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
+                    key={card.id}
+                    onDragEnd={() => setDraggedCard(null)}
+                    onDragOver={handleDragOver}
+                    onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
+                    onDrop={(event) => handleDrop(event, columnIndex, cardIndex)}
+                    onOpenDetails={() => openBoardCardDetails(card, columnIndex, cardIndex, column.title)}
+                    onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
+                  />
+                ))}
+              </div>
+
+              <button className="add-card-button" type="button" onClick={() => setCreateTargetColumnIndex(columnIndex)}>
+                <Plus size={17} />
+                Adicionar card
               </button>
-            </header>
-
-            <div className="kanban-card-list">
-              {column.cards.map(({ card, cardIndex }) => (
-                <BoardCardItem
-                  card={card}
-                  isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
-                  key={card.id}
-                  onDragEnd={() => setDraggedCard(null)}
-                  onDragOver={handleDragOver}
-                  onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
-                  onDrop={(event) => handleDrop(event, columnIndex, cardIndex)}
-                  onOpenDetails={() => openBoardCardDetails(card, columnIndex, cardIndex, column.title)}
-                  onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
-                />
-              ))}
-            </div>
-
-            <button className="add-card-button" type="button" onClick={() => setCreateTargetColumnIndex(columnIndex)}>
-              <Plus size={17} />
-              Adicionar card
-            </button>
-          </article>
-        ))}
-      </section>
+            </article>
+          ))}
+        </section>
+      </DualHorizontalScroll>
 
       <footer className="board-footer">
         <div className="priority-legend">
