@@ -4040,11 +4040,13 @@ interface SprintCapacityBreakdown {
   totalCapacity: number;
   squads: Array<{
     clientName: string;
+    hasSquad: boolean;
     monthlyHours: number;
     plannedHours: number;
     remainingHours: number;
     items: number;
   }>;
+  unassignedItems: number;
   unassignedHours: number;
 }
 
@@ -4156,29 +4158,40 @@ function getItemEstimatedHours(item: BacklogItem) {
 
 function getSprintCapacityBreakdown(sprint: SprintPlan, items: BacklogItem[], clients: ClientAccount[], members: ProductMember[]): SprintCapacityBreakdown {
   const totals = getSprintCapacityTotals(sprint, members);
-  const squadClients = clients.filter((client) => client.hasSquad);
-  const squads = squadClients.map((client) => {
-    const clientItems = items.filter((item) => item.client === client.name);
-    const plannedHours = clientItems.reduce((total, item) => total + getItemEstimatedHours(item), 0);
+  const clientsByName = new Map(clients.map((client) => [client.name, client]));
+  const itemsByClient = new Map<string, BacklogItem[]>();
 
-    return {
-      clientName: client.name,
-      monthlyHours: client.squadHours,
-      plannedHours,
-      remainingHours: client.squadHours - plannedHours,
-      items: clientItems.length
-    };
+  items.forEach((item) => {
+    const clientName = item.client?.trim() || "Sem empresa";
+    itemsByClient.set(clientName, [...(itemsByClient.get(clientName) ?? []), item]);
   });
-  const squadNames = new Set(squadClients.map((client) => client.name));
-  const unassignedHours = items
-    .filter((item) => !item.client || !squadNames.has(item.client))
-    .reduce((total, item) => total + getItemEstimatedHours(item), 0);
+
+  const squads = Array.from(itemsByClient.entries())
+    .sort(([firstClient], [secondClient]) => firstClient.localeCompare(secondClient))
+    .map(([clientName, clientItems]) => {
+      const client = clientsByName.get(clientName);
+      const hasSquad = Boolean(client?.hasSquad);
+      const monthlyHours = hasSquad ? client?.squadHours ?? 0 : 0;
+      const plannedHours = clientItems.reduce((total, item) => total + getItemEstimatedHours(item), 0);
+
+      return {
+        clientName,
+        hasSquad,
+        monthlyHours,
+        plannedHours,
+        remainingHours: monthlyHours - plannedHours,
+        items: clientItems.length
+      };
+    });
+
+  const withoutSquadRows = squads.filter((squad) => !squad.hasSquad);
 
   return {
     sprintName: sprint.name,
     ...totals,
     squads,
-    unassignedHours
+    unassignedItems: withoutSquadRows.reduce((total, squad) => total + squad.items, 0),
+    unassignedHours: withoutSquadRows.reduce((total, squad) => total + squad.plannedHours, 0)
   };
 }
 
@@ -4620,19 +4633,25 @@ function SprintCapacityBreakdownModal({ breakdown, onClose }: { breakdown: Sprin
         </header>
         <div className="capacity-total-strip">
           <span>Capacity diario: <strong>{breakdown.dailyCapacity}h</strong></span>
-          <span>Atividades sem squad: <strong>{breakdown.unassignedHours}h</strong></span>
+          <span>Sem squad: <strong>{breakdown.unassignedItems} atividades / {breakdown.unassignedHours}h</strong></span>
         </div>
         <div className="capacity-squad-list">
           {breakdown.squads.length === 0 ? (
-            <p>Nenhum cliente com squad cadastrado.</p>
+            <p>Nenhuma empresa presente nos cards desta sprint.</p>
           ) : (
             breakdown.squads.map((squad) => (
-              <div className="capacity-squad-row" key={squad.clientName}>
+              <div className={`capacity-squad-row ${squad.hasSquad ? "with-squad" : "without-squad"}`} key={squad.clientName}>
                 <span>{squad.clientName}</span>
                 <small>{squad.items} atividades</small>
                 <strong>{squad.plannedHours}h planejadas</strong>
-                <strong className={squad.remainingHours < 0 ? "capacity-negative" : ""}>{squad.remainingHours}h restantes</strong>
-                <small>Meta mensal: {squad.monthlyHours}h</small>
+                {squad.hasSquad ? (
+                  <>
+                    <strong className={squad.remainingHours < 0 ? "capacity-negative" : ""}>{squad.remainingHours}h restantes</strong>
+                    <small>Meta mensal: {squad.monthlyHours}h</small>
+                  </>
+                ) : (
+                  <small className="capacity-no-squad">Sem squad</small>
+                )}
               </div>
             ))
           )}

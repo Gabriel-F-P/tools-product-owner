@@ -1446,9 +1446,13 @@ input[type="checkbox"] {
 
 .sprint-header-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(92px, 110px) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 6px;
+}
+
+.sprint-header-main > div:first-child {
+  grid-column: 1 / -1;
 }
 
 .sprint-calendar-section h3,
@@ -1466,7 +1470,6 @@ input[type="checkbox"] {
   color: #657187;
   font-size: 10px;
   font-weight: 720;
-  white-space: nowrap;
 }
 
 .sprint-header-strip p {
@@ -3576,6 +3579,10 @@ input[type="checkbox"] {
   background: #ffffff;
 }
 
+.capacity-squad-row.without-squad {
+  grid-template-columns: minmax(0, 1fr) 100px 150px 96px;
+}
+
 .capacity-squad-row span,
 .capacity-squad-row strong,
 .estimate-row strong:first-child {
@@ -3594,6 +3601,10 @@ input[type="checkbox"] {
   color: #657187;
   font-size: 12px;
   font-weight: 700;
+}
+
+.capacity-no-squad {
+  justify-self: end;
 }
 
 .capacity-negative {
