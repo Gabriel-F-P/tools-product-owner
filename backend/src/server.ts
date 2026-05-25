@@ -8,8 +8,24 @@ import { workspaceStateRouter } from "./routes/workspace-state.routes.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 3333);
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://127.0.0.1:5173",
+  "http://localhost:5173"
+].filter(Boolean) as string[];
 
-app.use(cors({ origin: process.env.FRONTEND_URL ?? "http://127.0.0.1:5173" }));
+app.use(cors({
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith(".up.railway.app")) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+  }
+}));
+app.options("*", cors());
 app.use(express.json());
 
 app.get("/api/health", (_request, response) => {
