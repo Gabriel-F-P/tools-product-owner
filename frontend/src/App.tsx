@@ -3839,8 +3839,6 @@ function BacklogTabEntryCard({
     );
   }
 
-  const issueDisplayId = getIssueDisplayId(entry);
-
   return (
     <article
       className={`kanban-card backlog-tab-card category-accent ${isDragging ? "dragging" : ""}`}
@@ -3861,30 +3859,27 @@ function BacklogTabEntryCard({
       }}
     >
       <header>
-        <span>{entry.category}</span>
-        <div className="card-header-actions">
-          <small>{entry.createdAt}</small>
-          <button
-            className="card-delete-button"
-            type="button"
-            aria-label={`Excluir ${entry.name}`}
-            title="Excluir card"
-            onClick={(event) => {
-              event.stopPropagation();
-              onRequestDelete();
-            }}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <Trash2 size={15} />
-          </button>
-        </div>
+        <span className="owner-pill card-owner-avatar" title={entry.owner || "Sem responsavel"}>{entry.owner ? getInitials(entry.owner) : "--"}</span>
+        <span className={`board-card-pill priority-pill ${getPriorityTone(entry.priority)}`}>
+          {entry.priority === "Alta" || entry.priority === "Urgente" ? <ArrowUp size={13} /> : entry.priority === "Baixa" ? <ArrowDown size={13} /> : <span className="priority-dash" />}
+          {entry.priority}
+        </span>
+        <button
+          className="card-delete-button"
+          type="button"
+          aria-label={`Excluir ${entry.name}`}
+          title="Excluir card"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRequestDelete();
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <Trash2 size={14} />
+        </button>
       </header>
       <h3>{entry.name}</h3>
       <footer>
-        <span className={`board-card-pill priority-pill ${getPriorityTone(entry.priority)}`}>
-          {entry.priority === "Alta" || entry.priority === "Urgente" ? <ArrowUp size={14} /> : entry.priority === "Baixa" ? <ArrowDown size={14} /> : <span className="priority-dash" />}
-          {entry.priority}
-        </span>
         <span className="board-card-pill">
           <ListTodo size={14} />
           {entry.storyPoints || "SP"}
@@ -3893,13 +3888,6 @@ function BacklogTabEntryCard({
           <CalendarDays size={14} />
           {entry.estimate || "Sem estimativa"}
         </span>
-        {entry.owner && (
-          <span className="board-card-pill owner-card-pill" title={entry.owner}>
-            <span className="owner-pill">{getInitials(entry.owner)}</span>
-            {entry.owner}
-          </span>
-        )}
-        {issueDisplayId && <small>Linear {issueDisplayId}</small>}
       </footer>
     </article>
   );
@@ -4351,17 +4339,14 @@ function BacklogCalendarView({
                   style={{ "--category-color": getBoardColorHex(getCategoryConfig(item.category, categories)?.color ?? "blue") } as CSSProperties}
                 >
                   <header>
-                    <span>{item.category}</span>
-                    <div className="card-header-actions">
-                      {getIssueDisplayId(item) && <small>Linear {getIssueDisplayId(item)}</small>}
-                    </div>
+                    <span className="owner-pill card-owner-avatar" title={item.owner || "Sem responsavel"}>{item.owner ? getInitials(item.owner) : "--"}</span>
+                    <span className={`board-card-pill priority-pill ${getPriorityTone(item.priority)}`}>
+                      {item.priority === "Alta" || item.priority === "Urgente" ? <ArrowUp size={13} /> : item.priority === "Baixa" ? <ArrowDown size={13} /> : <span className="priority-dash" />}
+                      {item.priority}
+                    </span>
                   </header>
                   <h3>{item.name}</h3>
                   <footer>
-                    <span className={`board-card-pill priority-pill ${getPriorityTone(item.priority)}`}>
-                      {item.priority === "Alta" || item.priority === "Urgente" ? <ArrowUp size={14} /> : item.priority === "Baixa" ? <ArrowDown size={14} /> : <span className="priority-dash" />}
-                      {item.priority}
-                    </span>
                     <span className="board-card-pill">
                       <ListTodo size={14} />
                       {item.storyPoints || "SP"}
@@ -4370,12 +4355,6 @@ function BacklogCalendarView({
                       <CalendarDays size={14} />
                       <input value={item.estimate ?? ""} onChange={(event) => onUpdateItemEstimate(item.order, event.target.value)} placeholder="Sem estimativa" />
                     </label>
-                    {item.owner && (
-                      <span className="board-card-pill owner-card-pill" title={item.owner}>
-                        <span className="owner-pill">{getInitials(item.owner)}</span>
-                        {item.owner}
-                      </span>
-                    )}
                   </footer>
                   <div className="calendar-item-content">
                     <span>{item.createdAt}</span>
@@ -6772,8 +6751,6 @@ function BoardCardItem({
   onOpenDetails: () => void;
   onRequestDelete: () => void;
 }) {
-  const issueDisplayId = getIssueDisplayId(card);
-
   return (
     <article
       className={`kanban-card ${isDragging ? "dragging" : ""}`}
@@ -6793,31 +6770,27 @@ function BoardCardItem({
       }}
     >
       <header>
-        <span>{card.priority}</span>
-        <div className="card-header-actions">
-          {issueDisplayId && <small>Linear {issueDisplayId}</small>}
-          {card.done && <CheckCircle2 size={16} />}
-          <button
-            className="card-delete-button"
-            type="button"
-            aria-label={`Excluir ${card.title}`}
-            title="Excluir card"
-            onClick={(event) => {
-              event.stopPropagation();
-              onRequestDelete();
-            }}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <Trash2 size={15} />
-          </button>
-        </div>
+        <span className="owner-pill card-owner-avatar" title={card.owner || "Sem responsavel"}>{card.owner ? getInitials(card.owner) : "--"}</span>
+        <span className={`board-card-pill priority-pill ${getPriorityTone(card.priority)}`}>
+          {card.priority === "Alta" || card.priority === "Urgente" ? <ArrowUp size={13} /> : card.priority === "Baixa" ? <ArrowDown size={13} /> : <span className="priority-dash" />}
+          {card.priority}
+        </span>
+        <button
+          className="card-delete-button"
+          type="button"
+          aria-label={`Excluir ${card.title}`}
+          title="Excluir card"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRequestDelete();
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <Trash2 size={14} />
+        </button>
       </header>
       <h3>{card.title}</h3>
       <footer>
-        <span className={`board-card-pill priority-pill ${getPriorityTone(card.priority)}`}>
-          {card.priority === "Alta" || card.priority === "Urgente" ? <ArrowUp size={14} /> : card.priority === "Baixa" ? <ArrowDown size={14} /> : <span className="priority-dash" />}
-          {card.priority}
-        </span>
         <span className="board-card-pill">
           <ListTodo size={14} />
           {card.points || "SP"}
@@ -6826,12 +6799,6 @@ function BoardCardItem({
           <CalendarDays size={14} />
           {card.estimate || "Sem estimativa"}
         </span>
-        {card.owner && (
-          <span className="board-card-pill owner-card-pill" title={card.owner}>
-            <span className="owner-pill">{getInitials(card.owner)}</span>
-            {card.owner}
-          </span>
-        )}
       </footer>
     </article>
   );
