@@ -5133,7 +5133,7 @@ input[type="checkbox"] {
 
 .kanban-card {
   display: grid;
-  min-height: 130px;
+  min-height: 148px;
   padding: 10px 10px 0;
   border: 1px solid #e3e8f0;
   border-radius: 8px;
