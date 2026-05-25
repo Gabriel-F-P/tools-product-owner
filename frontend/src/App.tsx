@@ -470,6 +470,9 @@ interface BoardCard {
   priority: Priority;
   owner: string;
   points: number;
+  sprint?: string;
+  category?: string;
+  client?: string;
   description?: string;
   estimate?: string;
   linearIdentifier?: string;
@@ -873,7 +876,38 @@ export function App() {
     return () => window.clearTimeout(timeoutId);
   }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, products, retroConfig, sprintConfig, sprintStatusConfig]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !isWorkspaceStateLoaded) {
+      return;
+    }
+
+    const activeSprint = getActiveSprint(sprintConfig, sprintStatusConfig);
+
+    if (!activeSprint) {
+      return;
+    }
+
+    setBoardConfig((currentColumns) => {
+      let changed = false;
+      const nextColumns = currentColumns.map((column) => ({
+        ...column,
+        cards: column.cards.map((card) => {
+          if (card.sprint || card.createdBy !== "Board") {
+            return card;
+          }
+
+          changed = true;
+          return { ...card, sprint: activeSprint.name };
+        })
+      }));
+
+      return changed ? nextColumns : currentColumns;
+    });
+  }, [isAuthenticated, isWorkspaceStateLoaded, sprintConfig, sprintStatusConfig]);
+
   const sprintBacklogItems = getSprintReadyBacklogItems(backlogConfig);
+  const sprintBoardItems = getSprintReadyBoardItems(boardConfig, sprintConfig);
+  const sprintDeliveryItems = mergeSprintItems(sprintBacklogItems, sprintBoardItems);
   const activeProduct = products.find((product) => product.id === activeProductId) ?? products[0];
   const currentMember = activeProduct?.members.find((member) => member.email === authenticatedEmail) ?? activeProduct?.members[0];
   const currentPermission = currentMember?.permission ?? "Membro";
@@ -910,6 +944,15 @@ export function App() {
           }
 
           return entry.order in estimates ? { ...entry, estimate: estimates[entry.order] } : entry;
+        })
+      }))
+    );
+    setBoardConfig((currentColumns) =>
+      currentColumns.map((column) => ({
+        ...column,
+        cards: column.cards.map((card) => {
+          const order = getBoardCardOrder(card);
+          return order in estimates ? { ...card, estimate: estimates[order] } : card;
         })
       }))
     );
@@ -1006,7 +1049,7 @@ export function App() {
       )}
       {page === "sprints" && (
         <SprintsPage
-          backlogItems={sprintBacklogItems}
+          backlogItems={sprintDeliveryItems}
           categories={categoryConfig}
           clients={clientConfig}
           members={activeProduct.members}
@@ -1329,6 +1372,64 @@ function getSprintReadyBacklogItems(columns: BacklogColumn[]) {
     .filter((item) => item.sprint !== "Em planejamento");
 }
 
+function getSprintReadyBoardItems(columns: BoardColumn[], sprints: SprintPlan[]): BacklogItem[] {
+  const sprintNames = new Set(sprints.map((sprint) => sprint.name));
+
+  return columns.flatMap((column) =>
+    column.cards
+      .filter((card) => card.sprint && card.sprint !== "Em planejamento" && sprintNames.has(card.sprint))
+      .map((card) => boardCardToSprintItem(card))
+  );
+}
+
+function boardCardToSprintItem(card: BoardCard): BacklogItem {
+  return {
+    order: getBoardCardOrder(card),
+    name: card.title,
+    sprint: card.sprint ?? "Em planejamento",
+    category: card.category ?? "Board",
+    priority: card.priority,
+    createdAt: card.createdAt ?? new Date().toLocaleDateString("pt-BR"),
+    client: card.client,
+    description: card.description,
+    estimate: card.estimate,
+    linearIdentifier: card.linearIdentifier,
+    linearIssueId: card.linearIssueId,
+    linearUrl: card.linearUrl,
+    owner: card.owner || undefined,
+    storyPoints: card.points || undefined
+  };
+}
+
+function getBoardCardOrder(card: BoardCard) {
+  const numericId = Number(card.id.replace(/\D/g, "").slice(-9));
+  return Number.isFinite(numericId) && numericId > 0 ? numericId : Math.abs(hashString(card.id || card.title));
+}
+
+function hashString(value: string) {
+  return value.split("").reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0);
+}
+
+function mergeSprintItems(backlogItems: BacklogItem[], boardItems: BacklogItem[]) {
+  const seen = new Set(backlogItems.map(getSprintItemKey));
+  const uniqueBoardItems = boardItems.filter((item) => {
+    const key = getSprintItemKey(item);
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+
+  return [...backlogItems, ...uniqueBoardItems];
+}
+
+function getSprintItemKey(item: BacklogItem) {
+  return item.linearIssueId ?? item.linearIdentifier ?? item.linearUrl ?? item.name.trim().toLowerCase();
+}
+
 function moveConnectedBoardCardsToColumn(
   columns: BoardColumn[],
   screen: BoardConnectionScreen,
@@ -1412,6 +1513,9 @@ function boardCardFromBacklogItem(item: BacklogItem): BoardCard {
     priority: item.priority,
     owner: item.owner ?? "",
     points: item.storyPoints ?? 0,
+    sprint: item.sprint,
+    category: item.category,
+    client: item.client,
     description: item.description,
     estimate: item.estimate,
     linearIdentifier: item.linearIdentifier,
@@ -5151,7 +5255,11 @@ function BoardPage({
       priority: item.priority,
       owner: item.owner ?? "",
       points: item.storyPoints ?? 0,
+      sprint: item.sprint,
+      category: item.category,
+      client: item.client,
       description: item.description,
+      estimate: item.estimate,
       createdAt: new Date().toLocaleDateString("pt-BR"),
       createdBy: "Board",
       linearIdentifier: item.linearIdentifier,
@@ -5496,6 +5604,8 @@ function toBoardTaskDetail(card: BoardCard, status: string, columns: BoardColumn
     owner: card.owner,
     points: card.points,
     estimate: card.estimate,
+    sprint: card.sprint,
+    category: card.category,
     createdAt: card.createdAt,
     createdBy: card.createdBy,
     generalFields: card.generalFields,
