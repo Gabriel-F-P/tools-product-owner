@@ -69,11 +69,13 @@ type BoardFieldType = "Texto curto" | "Texto longo" | "Numero" | "Data" | "Lista
 const linearEstimateOptions = [1, 2, 3, 5, 8] as const;
 const priorityOptions: Priority[] = ["Sem prioridade", "Urgente", "Alta", "Media", "Baixa"];
 type WorkspaceStateSnapshot = Partial<{
+  activeProductId: string;
   backlogConfig: BacklogColumn[];
   boardConfig: BoardColumn[];
   categoryConfig: CategoryConfig[];
   clientConfig: ClientAccount[];
   initialVisibleTabs: number;
+  products: ProductAccess[];
   retroConfig: Retrospective[];
   sprintConfig: SprintPlan[];
   sprintStatusConfig: SprintStatus[];
@@ -746,7 +748,7 @@ export function App() {
   const [categoryConfig, setCategoryConfig] = useState<CategoryConfig[]>(() => defaultBacklogCategories.map((category) => ({ ...category })));
   const [clientConfig, setClientConfig] = useState<ClientAccount[]>([]);
   const [retroConfig, setRetroConfig] = useState<Retrospective[]>([]);
-  const [sprintConfig, setSprintConfig] = useState<SprintPlan[]>([]);
+  const [sprintConfig, setSprintConfig] = useState<SprintPlan[]>(() => sprintPlans.map((sprint) => ({ ...sprint })));
   const [sprintStatusConfig, setSprintStatusConfig] = useState<SprintStatus[]>(() => sprintStatuses.map((status) => ({ ...status })));
   const [initialVisibleTabs, setInitialVisibleTabs] = useState(4);
   const [isWorkspaceStateLoaded, setIsWorkspaceStateLoaded] = useState(false);
@@ -773,6 +775,8 @@ export function App() {
     if (snapshot.categoryConfig) setCategoryConfig(snapshot.categoryConfig);
     if (snapshot.clientConfig) setClientConfig(snapshot.clientConfig);
     if (typeof snapshot.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
+    if (snapshot.products) setProducts(snapshot.products);
+    if (snapshot.activeProductId) setActiveProductId(snapshot.activeProductId);
     if (snapshot.retroConfig) setRetroConfig(snapshot.retroConfig);
     if (snapshot.sprintConfig) setSprintConfig(snapshot.sprintConfig);
     if (snapshot.sprintStatusConfig) setSprintStatusConfig(snapshot.sprintStatusConfig);
@@ -834,11 +838,13 @@ export function App() {
 
     const timeoutId = window.setTimeout(() => {
       const snapshot = {
+        activeProductId,
         backlogConfig,
         boardConfig,
         categoryConfig,
         clientConfig,
         initialVisibleTabs,
+        products,
         retroConfig,
         sprintConfig,
         sprintStatusConfig
@@ -859,7 +865,7 @@ export function App() {
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
-  }, [backlogConfig, boardConfig, categoryConfig, clientConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, retroConfig, sprintConfig, sprintStatusConfig]);
+  }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, products, retroConfig, sprintConfig, sprintStatusConfig]);
 
   const sprintBacklogItems = getSprintReadyBacklogItems(backlogConfig);
   const activeProduct = products.find((product) => product.id === activeProductId) ?? products[0];
@@ -984,6 +990,7 @@ export function App() {
           sprintBacklogItems={sprintBacklogItems}
           sprints={sprintConfig}
           sprintStatuses={sprintStatusConfig}
+          onSprintsChange={setSprintConfig}
           theme={theme}
           onToggleTheme={() => setTheme(toggleTheme)}
         />
@@ -3942,13 +3949,15 @@ function getBusinessDays(start: string, end: string) {
   return Math.max(days, 1);
 }
 
-function getSprintCapacityTotals(sprint: SprintPlan) {
-  const dailyCapacity = Object.values(sprint.capacityByMember ?? {}).reduce((total, capacity) => total + (Number(capacity) || 0), 0);
+function getSprintCapacityTotals(sprint: SprintPlan, members: ProductMember[] = []) {
+  const activeMemberIds = new Set(members.map((member) => member.id));
+  const capacityByMember = sprint.capacityByMember ?? {};
+  const dailyCapacity = members.reduce((total, member) => total + (Number(capacityByMember[member.id]) || 0), 0);
   const businessDays = getBusinessDays(sprint.start, sprint.end);
 
   return {
     businessDays,
-    dailyCapacity,
+    dailyCapacity: activeMemberIds.size > 0 ? dailyCapacity : 0,
     totalCapacity: dailyCapacity * businessDays
   };
 }
@@ -3957,8 +3966,8 @@ function getItemEstimatedHours(item: BacklogItem) {
   return (item.storyPoints ?? 0) * (categoryHourRates[item.category] ?? 5);
 }
 
-function getSprintCapacityBreakdown(sprint: SprintPlan, items: BacklogItem[], clients: ClientAccount[]): SprintCapacityBreakdown {
-  const totals = getSprintCapacityTotals(sprint);
+function getSprintCapacityBreakdown(sprint: SprintPlan, items: BacklogItem[], clients: ClientAccount[], members: ProductMember[]): SprintCapacityBreakdown {
+  const totals = getSprintCapacityTotals(sprint, members);
   const squadClients = clients.filter((client) => client.hasSquad);
   const squads = squadClients.map((client) => {
     const clientItems = items.filter((item) => item.client === client.name);
@@ -3985,8 +3994,8 @@ function getSprintCapacityBreakdown(sprint: SprintPlan, items: BacklogItem[], cl
   };
 }
 
-function getSprintEstimateResult(sprint: SprintPlan, items: BacklogItem[]): SprintEstimateResult {
-  const { dailyCapacity } = getSprintCapacityTotals(sprint);
+function getSprintEstimateResult(sprint: SprintPlan, items: BacklogItem[], members: ProductMember[]): SprintEstimateResult {
+  const { dailyCapacity } = getSprintCapacityTotals(sprint, members);
   const effectiveDailyCapacity = Math.max(dailyCapacity, 1);
   const priorityOrder: Record<Priority, number> = { Urgente: 0, Alta: 1, Media: 2, Baixa: 3, "Sem prioridade": 4 };
   let accumulatedHours = 0;
@@ -4060,7 +4069,7 @@ function BacklogCalendarView({
     setEstimatingSprintId(sprint.id);
 
     window.setTimeout(() => {
-      const estimate = getSprintEstimateResult(sprint, items);
+      const estimate = getSprintEstimateResult(sprint, items, members);
       onUpdateSprintEstimates(
         Object.fromEntries(estimate.items.map((item) => [item.order, item.deliveryDate]))
       );
@@ -4075,7 +4084,7 @@ function BacklogCalendarView({
         const status = statuses.find((currentStatus) => currentStatus.id === sprint.statusId) ?? statuses[0];
         const isActiveSprint = activeStatus ? sprint.statusId === activeStatus.id : sprint.name === currentSprint;
         const pointsBreakdown = getSprintPointBreakdown(sprint, items);
-        const capacityTotals = getSprintCapacityTotals(sprint);
+        const capacityTotals = getSprintCapacityTotals(sprint, members);
 
         return (
           <section
@@ -4112,7 +4121,7 @@ function BacklogCalendarView({
                 <button className="sprint-points-button" type="button" onClick={() => setSelectedBreakdown(pointsBreakdown)}>
                   {pointsBreakdown.totalPoints} SP
                 </button>
-                <button className="sprint-points-button" type="button" onClick={() => setSelectedCapacity(getSprintCapacityBreakdown(sprint, items, clients))}>
+                <button className="sprint-points-button" type="button" onClick={() => setSelectedCapacity(getSprintCapacityBreakdown(sprint, items, clients, members))}>
                   {capacityTotals.totalCapacity}h capacity
                 </button>
               </div>
@@ -4120,7 +4129,13 @@ function BacklogCalendarView({
 
             <div className="sprint-objective">
               <span>Objetivo</span>
-              <p>{sprint.objective}</p>
+              <textarea
+                aria-label={`Objetivo da ${sprint.name}`}
+                value={sprint.objective}
+                onChange={(event) =>
+                  onSprintsChange(sprints.map((currentSprint) => currentSprint.id === sprint.id ? { ...currentSprint, objective: event.target.value } : currentSprint))
+                }
+              />
             </div>
 
             <div className="calendar-item-list">
@@ -4389,7 +4404,15 @@ function SprintCapacityModal({
         </div>
         <footer>
           <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
-          <button className="primary-button" type="button" onClick={() => onSave(capacityByMember)}>Salvar capacity</button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() =>
+              onSave(Object.fromEntries(members.map((member) => [member.id, Number(capacityByMember[member.id]) || 0])))
+            }
+          >
+            Salvar capacity
+          </button>
         </footer>
       </section>
     </div>
@@ -4899,6 +4922,7 @@ function BoardPage({
   sprintBacklogItems,
   sprints,
   sprintStatuses,
+  onSprintsChange,
   theme,
   onToggleTheme
 }: {
@@ -4912,6 +4936,7 @@ function BoardPage({
   sprintBacklogItems: BacklogItem[];
   sprints: SprintPlan[];
   sprintStatuses: SprintStatus[];
+  onSprintsChange: (sprints: SprintPlan[]) => void;
   theme: Theme;
   onToggleTheme: () => void;
 }) {
@@ -5065,6 +5090,14 @@ function BoardPage({
     setDeleteTarget(null);
   }
 
+  function updateSelectedSprintObjective(objective: string) {
+    if (!selectedSprint) {
+      return;
+    }
+
+    onSprintsChange(sprints.map((sprint) => sprint.id === selectedSprint.id ? { ...sprint, objective } : sprint));
+  }
+
   return (
     <main className="dashboard board-page">
       <Topbar title="Board" subtitle="Acompanhe o progresso dos itens de delivery" theme={theme} onToggleTheme={onToggleTheme} />
@@ -5079,14 +5112,20 @@ function BoardPage({
               ))}
             </select>
           </label>
-          {selectedSprint && (
-            <div className="board-sprint-meta">
-              <strong>{selectedSprint.objective}</strong>
-              <span>{selectedSprint.start} - {selectedSprint.end}</span>
+          <div className="board-sprint-summary">
+            {selectedSprint && (
+              <div className="board-sprint-meta">
+                <textarea
+                  aria-label={`Objetivo da ${selectedSprint.name}`}
+                  value={selectedSprint.objective}
+                  onChange={(event) => updateSelectedSprintObjective(event.target.value)}
+                />
+                <span>{selectedSprint.start} - {selectedSprint.end}</span>
+              </div>
+            )}
+            <div className="board-members" aria-label="Membros da sprint">
+              {productMemberInitials.map((initials) => <span key={initials}>{initials}</span>)}
             </div>
-          )}
-          <div className="board-members" aria-label="Membros da sprint">
-            {productMemberInitials.map((initials) => <span key={initials}>{initials}</span>)}
           </div>
         </div>
         <div className="board-actions">
