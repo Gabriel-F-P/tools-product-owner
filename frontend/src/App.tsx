@@ -3376,7 +3376,7 @@ function getIssueEstimate(value?: string | number) {
 function syncBacklogIssueUpdate(item: BacklogItem, status?: string) {
   return updateIssue({
     linearIdentifier: item.linearIdentifier,
-    linearIssueId: getLinkedIssueId(item),
+    linearIssueId: item.linearIssueId,
     linearUrl: item.linearUrl,
     title: item.name,
     description: item.description,
@@ -3401,7 +3401,7 @@ function getIssueDisplayId(item: Pick<BacklogItem, "linearIssueId" | "linearIden
 
 function toArchiveIssuePayload(item: Pick<BacklogItem, "name" | "linearIssueId" | "linearIdentifier" | "linearUrl">) {
   return {
-    linearIssueId: getLinkedIssueId(item),
+    linearIssueId: item.linearIssueId,
     linearIdentifier: item.linearIdentifier,
     linearUrl: item.linearUrl,
     title: item.name
@@ -3410,7 +3410,7 @@ function toArchiveIssuePayload(item: Pick<BacklogItem, "name" | "linearIssueId" 
 
 function toArchiveBoardIssuePayload(card: Pick<BoardCard, "title" | "linearIssueId" | "linearIdentifier" | "linearUrl">) {
   return {
-    linearIssueId: getLinkedIssueId(card),
+    linearIssueId: card.linearIssueId,
     linearIdentifier: card.linearIdentifier,
     linearUrl: card.linearUrl,
     title: card.title
@@ -3420,7 +3420,7 @@ function toArchiveBoardIssuePayload(card: Pick<BoardCard, "title" | "linearIssue
 function syncBoardIssueUpdate(card: BoardCard, status?: string) {
   return updateIssue({
     linearIdentifier: card.linearIdentifier,
-    linearIssueId: getLinkedIssueId(card),
+    linearIssueId: card.linearIssueId,
     linearUrl: card.linearUrl,
     title: card.title,
     description: card.description,

@@ -380,6 +380,9 @@ function matchesIssue(item: Pick<BacklogItem, "linearIssueId" | "linearIdentifie
 
   return Boolean(
     (issue.id && item.linearIssueId === issue.id) ||
+    (issue.identifier && item.linearIssueId === issue.identifier) ||
+    (issue.url && item.linearIssueId === issue.url) ||
+    (issue.id && item.linearIdentifier === issue.id) ||
     (issue.identifier && item.linearIdentifier === issue.identifier) ||
     (issue.url && item.linearUrl === issue.url) ||
     (!itemHasLinearLink && title.trim().toLowerCase() === issue.title.trim().toLowerCase()) ||

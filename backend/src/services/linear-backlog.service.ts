@@ -109,13 +109,14 @@ function isN8nConfigured(input?: IntegrationSettingsInput) {
 
 function createMockIssue(input: CreateBacklogIssueInput): CreatedLinearIssue {
   if (input.linearUrl || input.linearIssueId || input.linearIdentifier) {
-    const identifier = input.linearIdentifier ?? input.linearIssueId ?? input.linearUrl ?? `LINK-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const reference = getLinearIssueReference(input);
+    const identifier = reference.identifier ?? reference.id ?? reference.url ?? `LINK-${randomUUID().slice(0, 8).toUpperCase()}`;
 
     return {
-      id: input.linearIssueId ?? identifier,
+      id: reference.id ?? identifier,
       identifier,
       title: input.name,
-      url: input.linearUrl ?? `https://linear.app/linked/${identifier}`
+      url: reference.url ?? `https://linear.app/linked/${identifier}`
     };
   }
 
@@ -135,6 +136,33 @@ function getLinearIdentifierFromUrl(url?: string) {
 
   const match = url.match(/\/([A-Z]+-\d+)(?:\b|$)/i) ?? url.match(/\b([A-Z]+-\d+)\b/i);
   return match?.[1]?.toUpperCase();
+}
+
+function isLinearUuid(value?: string) {
+  return Boolean(value?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i));
+}
+
+function isLinearIdentifier(value?: string) {
+  return Boolean(value?.match(/^[A-Z]+-\d+$/i));
+}
+
+function isHttpUrl(value?: string) {
+  return Boolean(value?.match(/^https?:\/\//i));
+}
+
+function getLinearIssueReference(input: Pick<CreateBacklogIssueInput | UpdateBacklogIssueInput | ArchiveBacklogIssueInput, "linearIdentifier" | "linearIssueId" | "linearUrl">) {
+  const rawIssueId = input.linearIssueId?.trim();
+  const rawIdentifier = input.linearIdentifier?.trim();
+  const rawUrl = input.linearUrl?.trim();
+  const urlFromIssueId = isHttpUrl(rawIssueId) ? rawIssueId : undefined;
+  const identifierFromIssueId = isLinearIdentifier(rawIssueId) ? rawIssueId?.toUpperCase() : undefined;
+  const identifierFromUrl = getLinearIdentifierFromUrl(rawUrl ?? urlFromIssueId);
+
+  return {
+    id: isLinearUuid(rawIssueId) ? rawIssueId : undefined,
+    identifier: rawIdentifier?.toUpperCase() ?? identifierFromIssueId ?? identifierFromUrl,
+    url: rawUrl ?? urlFromIssueId
+  };
 }
 
 function normalizeIssuePriority(value: unknown): BacklogPriority {
@@ -394,9 +422,8 @@ async function findLinearIssueByTitle(input: CreateBacklogIssueInput): Promise<C
 
 async function findLinkedLinearIssue(input: CreateBacklogIssueInput): Promise<CreatedLinearIssue | undefined> {
   const config = getLinearConfig(input);
-  const identifier = input.linearIdentifier ?? getLinearIdentifierFromUrl(input.linearUrl);
-  const issueId = input.linearIssueId;
-  const term = issueId ?? identifier;
+  const reference = getLinearIssueReference(input);
+  const term = reference.id ?? reference.identifier;
 
   if (!config.apiKey || !term) {
     return undefined;
@@ -618,7 +645,8 @@ async function updateN8nIssue(input: UpdateBacklogIssueInput) {
   const client = createN8nClient({ secret: config.secret, webhookUrl: config.webhookUrl });
   const cachedIssue = input.title ? createdIssuesByTitle.get(input.title) : undefined;
   const workspaceIssue = await findLinkedWorkspaceIssue(input.title);
-  const issueId = input.linearIssueId ?? cachedIssue?.id ?? workspaceIssue?.id ?? input.linearIdentifier ?? workspaceIssue?.identifier ?? input.linearUrl ?? workspaceIssue?.url ?? "";
+  const reference = getLinearIssueReference(input);
+  const issueId = reference.id ?? cachedIssue?.id ?? workspaceIssue?.id ?? reference.identifier ?? workspaceIssue?.identifier ?? reference.url ?? workspaceIssue?.url ?? "";
   const updatePayload = {
     id: issueId,
     issueId,
@@ -627,8 +655,8 @@ async function updateN8nIssue(input: UpdateBacklogIssueInput) {
     description: input.description ?? "",
     category: input.category,
     client: input.client,
-    linearIdentifier: input.linearIdentifier ?? cachedIssue?.identifier ?? workspaceIssue?.identifier,
-    linearUrl: input.linearUrl ?? cachedIssue?.url ?? workspaceIssue?.url,
+    linearIdentifier: reference.identifier ?? cachedIssue?.identifier ?? workspaceIssue?.identifier,
+    linearUrl: reference.url ?? cachedIssue?.url ?? workspaceIssue?.url,
     priority: priorityMap[input.priority ?? "Media"],
     estimate: input.estimate ?? input.storyPoints,
     storyPoints: input.storyPoints ?? input.estimate,
@@ -679,11 +707,13 @@ async function updateN8nIssue(input: UpdateBacklogIssueInput) {
 
 function getLinkedLinearIssue(input: Pick<UpdateBacklogIssueInput, "linearIdentifier" | "linearIssueId" | "linearUrl" | "title">) {
   const cachedIssue = input.title ? createdIssuesByTitle.get(input.title) : undefined;
+  const reference = getLinearIssueReference(input);
+  const cachedIssueId = cachedIssue?.id;
 
   return {
-    id: input.linearIssueId ?? cachedIssue?.id ?? input.linearIdentifier ?? input.linearUrl ?? "",
-    identifier: input.linearIdentifier ?? cachedIssue?.identifier,
-    url: input.linearUrl ?? cachedIssue?.url
+    id: reference.id ?? (isLinearUuid(cachedIssueId) ? cachedIssueId : undefined) ?? "",
+    identifier: reference.identifier ?? cachedIssue?.identifier,
+    url: reference.url ?? cachedIssue?.url
   };
 }
 
@@ -743,14 +773,15 @@ async function archiveN8nIssue(input: ArchiveBacklogIssueInput) {
   const client = createN8nClient({ secret: config.secret, webhookUrl: config.webhookUrl });
   const cachedIssue = input.title ? createdIssuesByTitle.get(input.title) : undefined;
   const workspaceIssue = await findLinkedWorkspaceIssue(input.title);
-  const issueId = input.linearIssueId ?? cachedIssue?.id ?? workspaceIssue?.id ?? input.linearIdentifier ?? workspaceIssue?.identifier ?? input.linearUrl ?? workspaceIssue?.url ?? "";
+  const reference = getLinearIssueReference(input);
+  const issueId = reference.id ?? cachedIssue?.id ?? workspaceIssue?.id ?? reference.identifier ?? workspaceIssue?.identifier ?? reference.url ?? workspaceIssue?.url ?? "";
   const archivePayload = {
     id: issueId,
     issueId,
     linearIssueId: issueId,
     title: input.title,
-    linearIdentifier: input.linearIdentifier ?? cachedIssue?.identifier ?? workspaceIssue?.identifier,
-    linearUrl: input.linearUrl ?? cachedIssue?.url ?? workspaceIssue?.url
+    linearIdentifier: reference.identifier ?? cachedIssue?.identifier ?? workspaceIssue?.identifier,
+    linearUrl: reference.url ?? cachedIssue?.url ?? workspaceIssue?.url
   };
   console.log("n8n issue delete payload", JSON.stringify(archivePayload));
 
@@ -820,6 +851,7 @@ export async function createBacklogIssue(input: CreateBacklogIssueInput) {
 export async function updateBacklogIssue(input: UpdateBacklogIssueInput) {
   if (isN8nConfigured(input)) {
     input = await hydrateIssueLinkFromWorkspace(input);
+    input = await hydrateIssueLinkFromLinear(input);
     const linearConfig = getLinearConfig(input);
     const canResolveLinearState = Boolean(linearConfig.apiKey && linearConfig.teamId);
     let linearState: LinearWorkflowState | undefined;
@@ -923,6 +955,56 @@ async function hydrateIssueLinkFromWorkspace<TInput extends {
     : input;
 }
 
+async function hydrateIssueLinkFromLinear(input: UpdateBacklogIssueInput): Promise<UpdateBacklogIssueInput> {
+  const reference = getLinearIssueReference(input);
+
+  if (reference.id || (!reference.identifier && !reference.url)) {
+    return {
+      ...input,
+      linearIssueId: reference.id ?? input.linearIssueId,
+      linearIdentifier: reference.identifier ?? input.linearIdentifier,
+      linearUrl: reference.url ?? input.linearUrl
+    };
+  }
+
+  try {
+    const issue = await findLinkedLinearIssue({
+      name: input.title,
+      description: input.description,
+      sprint: input.sprint,
+      category: input.category,
+      client: input.client,
+      owner: input.owner,
+      priority: input.priority,
+      storyPoints: input.storyPoints ?? input.estimate,
+      linearIdentifier: reference.identifier,
+      linearIssueId: reference.id,
+      linearUrl: reference.url,
+      integrationSettings: input.integrationSettings
+    });
+
+    return issue
+      ? {
+          ...input,
+          linearIssueId: issue.id,
+          linearIdentifier: issue.identifier,
+          linearUrl: issue.url
+        }
+      : {
+          ...input,
+          linearIdentifier: reference.identifier ?? input.linearIdentifier,
+          linearUrl: reference.url ?? input.linearUrl
+        };
+  } catch (error) {
+    console.log("linear issue link hydration failed", error instanceof Error ? error.message : String(error));
+    return {
+      ...input,
+      linearIdentifier: reference.identifier ?? input.linearIdentifier,
+      linearUrl: reference.url ?? input.linearUrl
+    };
+  }
+}
+
 async function findLinkedWorkspaceIssue(title?: string): Promise<CreatedLinearIssue | undefined> {
   if (!title?.trim()) {
     return undefined;
@@ -956,9 +1038,14 @@ function getWorkspaceIssueRecord(value: unknown): CreatedLinearIssue | undefined
 
   const record = value as Record<string, unknown>;
   const title = getStringValue(record.name) ?? getStringValue(record.title);
-  const id = getStringValue(record.linearIssueId);
-  const identifier = getStringValue(record.linearIdentifier);
-  const url = getStringValue(record.linearUrl);
+  const reference = getLinearIssueReference({
+    linearIssueId: getStringValue(record.linearIssueId),
+    linearIdentifier: getStringValue(record.linearIdentifier),
+    linearUrl: getStringValue(record.linearUrl)
+  });
+  const id = reference.id;
+  const identifier = reference.identifier;
+  const url = reference.url;
 
   if (title && (id || identifier || url)) {
     return {
