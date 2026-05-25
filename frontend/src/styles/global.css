@@ -5066,6 +5066,24 @@ input[type="checkbox"] {
   grid-column: 1 / -1;
 }
 
+.linear-link-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.linear-link-editor button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid #dbe2ec;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #4254f5;
+  cursor: pointer;
+}
+
 .card-meta-editor label {
   display: grid;
   gap: 4px;
@@ -6022,4 +6040,3 @@ input[type="checkbox"] {
     grid-template-columns: 1fr;
   }
 }
-

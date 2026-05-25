@@ -2,7 +2,7 @@ import { getIntegrationSettings } from "./integration-settings.service.js";
 import { getWorkspaceState, saveWorkspaceState } from "./workspace-state.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
 
-type Priority = "Alta" | "Media" | "Baixa";
+type Priority = "Sem prioridade" | "Urgente" | "Alta" | "Media" | "Baixa";
 type BoardColor = "blue" | "purple" | "orange" | "red" | "green" | "pink" | "cyan" | "teal" | "indigo" | "slate";
 type BoardIcon = "columns" | "dot" | "lock" | "list" | "rocket" | "shield";
 
@@ -340,7 +340,15 @@ function normalizePriority(value: unknown): Priority {
     const normalized = value.toLowerCase();
 
     if (normalized.includes("alta") || normalized.includes("high") || normalized === "1" || normalized === "2") {
+      if (normalized === "1" || normalized.includes("urgent")) {
+        return "Urgente";
+      }
+
       return "Alta";
+    }
+
+    if (normalized.includes("sem prioridade") || normalized.includes("no priority") || normalized === "0") {
+      return "Sem prioridade";
     }
 
     if (normalized.includes("baixa") || normalized.includes("low") || normalized === "4") {
@@ -348,7 +356,15 @@ function normalizePriority(value: unknown): Priority {
     }
   }
 
-  if (value === 1 || value === 2) {
+  if (value === 0) {
+    return "Sem prioridade";
+  }
+
+  if (value === 1) {
+    return "Urgente";
+  }
+
+  if (value === 2) {
     return "Alta";
   }
 

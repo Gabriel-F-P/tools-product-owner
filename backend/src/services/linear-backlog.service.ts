@@ -63,6 +63,8 @@ interface LinkedLinearIssueNode {
 const createdIssuesByTitle = new Map<string, CreatedLinearIssue>();
 
 const priorityMap: Record<BacklogPriority, number> = {
+  "Sem prioridade": 0,
+  Urgente: 1,
   Alta: 2,
   Media: 3,
   Baixa: 4
@@ -168,7 +170,15 @@ function getLinearIssueReference(input: Pick<CreateBacklogIssueInput | UpdateBac
 function normalizeIssuePriority(value: unknown): BacklogPriority {
   const priority = typeof value === "number" ? value : Number(value);
 
-  if (priority <= 2) {
+  if (priority <= 0) {
+    return "Sem prioridade";
+  }
+
+  if (priority === 1) {
+    return "Urgente";
+  }
+
+  if (priority === 2) {
     return "Alta";
   }
 
@@ -565,6 +575,7 @@ async function createLinearIssue(input: CreateBacklogIssueInput, epicName?: stri
     stateId: config.defaultStateId,
     projectId: config.projectId,
     priority: priorityMap[input.priority ?? "Media"],
+    estimate: input.storyPoints ?? undefined,
     labelIds: labelId ? [labelId] : undefined,
     cycleId
   };
@@ -655,7 +666,7 @@ async function createN8nIssue(input: CreateBacklogIssueInput) {
       teamId?: string;
       priority: number;
       sprint?: string;
-      estimate?: number;
+      estimate?: number | null;
     },
     { issue?: CreatedLinearIssue; [key: string]: unknown }
   >({
@@ -729,8 +740,8 @@ async function updateN8nIssue(input: UpdateBacklogIssueInput) {
       linearIdentifier?: string;
       linearUrl?: string;
       priority: number;
-      estimate?: number;
-      storyPoints?: number;
+      estimate?: number | null;
+      storyPoints?: number | null;
       owner?: string;
       assignee?: string;
       sprint?: string;

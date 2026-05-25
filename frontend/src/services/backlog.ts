@@ -8,8 +8,8 @@ export interface CreateIssuePayload {
   category?: string;
   client?: string;
   owner?: string;
-  priority?: "Alta" | "Media" | "Baixa";
-  storyPoints?: number;
+  priority?: BacklogItem["priority"];
+  storyPoints?: number | null;
   linearIdentifier?: string;
   linearIssueId?: string;
   linearUrl?: string;
@@ -25,9 +25,9 @@ export interface UpdateIssuePayload {
   client?: string;
   linearIdentifier?: string;
   linearUrl?: string;
-  priority?: "Alta" | "Media" | "Baixa";
-  estimate?: number;
-  storyPoints?: number;
+  priority?: BacklogItem["priority"];
+  estimate?: number | null;
+  storyPoints?: number | null;
   owner?: string;
   status?: string;
 }
@@ -259,7 +259,15 @@ function getPriorityValue(value: unknown): BacklogItem["priority"] | undefined {
     return undefined;
   }
 
-  if (priority <= 2) {
+  if (priority <= 0) {
+    return "Sem prioridade";
+  }
+
+  if (priority === 1) {
+    return "Urgente";
+  }
+
+  if (priority === 2) {
     return "Alta";
   }
 

@@ -1,4 +1,4 @@
-export type BacklogPriority = "Alta" | "Media" | "Baixa";
+export type BacklogPriority = "Sem prioridade" | "Urgente" | "Alta" | "Media" | "Baixa";
 
 export interface BacklogItem {
   order: number;

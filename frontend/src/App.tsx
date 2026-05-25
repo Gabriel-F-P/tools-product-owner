@@ -38,6 +38,7 @@ import {
   RefreshCcw,
   Rocket,
   Search,
+  Save,
   Settings,
   ShieldCheck,
   SquareKanban,
@@ -65,6 +66,8 @@ type UserPermission = "Membro" | "Admin";
 type BoardTabColor = "blue" | "purple" | "orange" | "red" | "green" | "pink" | "cyan" | "teal" | "indigo" | "slate";
 type BoardTabIcon = "columns" | "dot" | "lock" | "list" | "rocket" | "shield";
 type BoardFieldType = "Texto curto" | "Texto longo" | "Numero" | "Data" | "Lista" | "Sim/Nao" | "Pessoa";
+const linearEstimateOptions = [1, 2, 3, 5, 8] as const;
+const priorityOptions: Priority[] = ["Sem prioridade", "Urgente", "Alta", "Media", "Baixa"];
 type WorkspaceStateSnapshot = Partial<{
   backlogConfig: BacklogColumn[];
   boardConfig: BoardColumn[];
@@ -3025,7 +3028,7 @@ function BacklogPage({
   function updateBacklogEntryMeta(
     columnIndex: number,
     entryIndex: number,
-    updates: Partial<Pick<BacklogItem, "description" | "estimate" | "owner" | "priority" | "storyPoints">>
+    updates: Partial<Pick<BacklogItem, "description" | "estimate" | "owner" | "priority" | "storyPoints" | "linearIdentifier" | "linearIssueId" | "linearUrl">>
   ) {
     const currentEntry = columns[columnIndex]?.entries[entryIndex];
     const nextEntry = currentEntry && !isEpic(currentEntry) ? { ...currentEntry, ...updates } : null;
@@ -3048,6 +3051,61 @@ function BacklogPage({
         const message = error instanceof Error ? error.message : "Integracao indisponivel.";
         setIntegrationNotice({ tone: "error", message: `O responsavel ou estimativa mudou localmente, mas nao foi atualizado no Linear. ${message}` });
       });
+    }
+  }
+
+  async function saveBacklogEntryLinearLink(columnIndex: number, entryIndex: number, linearUrl: string) {
+    const currentEntry = columns[columnIndex]?.entries[entryIndex];
+
+    if (!currentEntry || isEpic(currentEntry)) {
+      return;
+    }
+
+    const trimmedLinearUrl = linearUrl.trim();
+    const baseItem = {
+      ...currentEntry,
+      linearIdentifier: trimmedLinearUrl ? extractLinearIdentifier(trimmedLinearUrl) || undefined : undefined,
+      linearIssueId: undefined,
+      linearUrl: trimmedLinearUrl || undefined
+    };
+
+    try {
+      const result = await createIssue({
+        category: baseItem.category,
+        client: baseItem.client,
+        description: baseItem.description,
+        linearIdentifier: baseItem.linearIdentifier,
+        linearIssueId: baseItem.linearIssueId,
+        linearUrl: baseItem.linearUrl,
+        name: baseItem.name,
+        owner: baseItem.owner,
+        priority: baseItem.priority,
+        sprint: baseItem.sprint,
+        storyPoints: baseItem.storyPoints ?? null
+      });
+      const linkedItem = applyCreatedIssueLink(baseItem, result);
+
+      onColumnsChange(
+        columns.map((column, currentColumnIndex) =>
+          currentColumnIndex === columnIndex
+            ? {
+                ...column,
+                entries: column.entries.map((entry, currentEntryIndex) =>
+                  currentEntryIndex === entryIndex && !isEpic(entry) ? linkedItem : entry
+                )
+              }
+            : column
+        )
+      );
+      setIntegrationNotice({
+        tone: linkedItem.linearIssueId ? "success" : "error",
+        message: trimmedLinearUrl
+          ? "Issue Linear vinculada e parametros preenchidos."
+          : "Nova issue Linear criada e vinculada ao card."
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Integracao indisponivel.";
+      setIntegrationNotice({ tone: "error", message: `Nao foi possivel salvar o vinculo Linear. ${message}` });
     }
   }
 
@@ -3193,6 +3251,7 @@ function BacklogPage({
                         })}
                         onToggleEpic={() => isEpic(entry) && toggleEpic(entry.id)}
                         onUpdateMeta={(updates) => updateBacklogEntryMeta(columnIndex, entryIndex, updates)}
+                        onSaveLinearLink={(linearUrl) => saveBacklogEntryLinearLink(columnIndex, entryIndex, linearUrl)}
                         onRequestDelete={() => setDeleteTarget({ columnIndex, entryIndex, title: entry.name })}
                       />
                     ))}
@@ -3373,6 +3432,10 @@ function getIssueEstimate(value?: string | number) {
   return Number.isFinite(estimate) && estimate > 0 ? estimate : undefined;
 }
 
+function getLinearEstimate(value?: string | number) {
+  return getIssueEstimate(value) ?? null;
+}
+
 function syncBacklogIssueUpdate(item: BacklogItem, status?: string) {
   return updateIssue({
     linearIdentifier: item.linearIdentifier,
@@ -3384,8 +3447,8 @@ function syncBacklogIssueUpdate(item: BacklogItem, status?: string) {
     category: item.category,
     client: item.client,
     priority: item.priority,
-    estimate: getIssueEstimate(item.storyPoints ?? item.estimate),
-    storyPoints: item.storyPoints,
+    estimate: getLinearEstimate(item.storyPoints ?? item.estimate),
+    storyPoints: item.storyPoints ?? null,
     owner: item.owner,
     status
   });
@@ -3425,7 +3488,8 @@ function syncBoardIssueUpdate(card: BoardCard, status?: string) {
     title: card.title,
     description: card.description,
     priority: card.priority,
-    estimate: getIssueEstimate(card.points ?? card.estimate),
+    estimate: getLinearEstimate(card.points ?? card.estimate),
+    storyPoints: card.points || null,
     owner: card.owner,
     status
   });
@@ -3468,6 +3532,7 @@ function BacklogTabEntryCard({
   onOpenEntry,
   onOpenTask,
   onRequestDelete,
+  onSaveLinearLink,
   onToggleEpic,
   onUpdateMeta
 }: {
@@ -3483,8 +3548,9 @@ function BacklogTabEntryCard({
   onOpenEntry: () => void;
   onOpenTask: (task: TaskDetail) => void;
   onRequestDelete: () => void;
+  onSaveLinearLink: (linearUrl: string) => void;
   onToggleEpic: () => void;
-  onUpdateMeta: (updates: Partial<Pick<BacklogItem, "description" | "estimate" | "owner" | "priority" | "storyPoints">>) => void;
+  onUpdateMeta: (updates: Partial<Pick<BacklogItem, "description" | "estimate" | "owner" | "priority" | "storyPoints" | "linearIdentifier" | "linearIssueId" | "linearUrl">>) => void;
 }) {
   const categoryColor = getCategoryColor(entry, categories);
 
@@ -3544,7 +3610,7 @@ function BacklogTabEntryCard({
                 onDragStart={(event) => onEpicItemDragStart(event, itemIndex)}
               >
                 <span>{item.name}</span>
-                <Badge tone={item.priority === "Alta" ? "red" : item.priority === "Media" ? "yellow" : "green"}>{item.priority}</Badge>
+                <Badge tone={getPriorityTone(item.priority)}>{item.priority}</Badge>
               </button>
             ))}
           </div>
@@ -3601,6 +3667,8 @@ function BacklogTabEntryCard({
         owner={entry.owner ?? ""}
         points={entry.storyPoints ?? 0}
         priority={entry.priority}
+        linearUrl={entry.linearUrl ?? ""}
+        onSaveLinearLink={onSaveLinearLink}
         onChange={(owner, points, estimate, priority, description) =>
           onUpdateMeta({
             description: description || undefined,
@@ -3611,7 +3679,7 @@ function BacklogTabEntryCard({
           })
         }
       />
-      <Badge tone={entry.priority === "Alta" ? "red" : entry.priority === "Media" ? "yellow" : "green"}>{entry.priority}</Badge>
+      <Badge tone={getPriorityTone(entry.priority)}>{entry.priority}</Badge>
       <footer>
         <span>{entry.sprint}</span>
         <span>{entry.category}</span>
@@ -3920,7 +3988,7 @@ function getSprintCapacityBreakdown(sprint: SprintPlan, items: BacklogItem[], cl
 function getSprintEstimateResult(sprint: SprintPlan, items: BacklogItem[]): SprintEstimateResult {
   const { dailyCapacity } = getSprintCapacityTotals(sprint);
   const effectiveDailyCapacity = Math.max(dailyCapacity, 1);
-  const priorityOrder: Record<Priority, number> = { Alta: 0, Media: 1, Baixa: 2 };
+  const priorityOrder: Record<Priority, number> = { Urgente: 0, Alta: 1, Media: 2, Baixa: 3, "Sem prioridade": 4 };
   let accumulatedHours = 0;
   const sprintStart = parseSprintDate(sprint.start);
 
@@ -4564,6 +4632,26 @@ function getCategoryTone(category: string): "blue" | "red" | "yellow" | "green" 
   return tones[category] ?? "blue";
 }
 
+function getPriorityTone(priority: Priority): "blue" | "red" | "yellow" | "green" | "pink" {
+  if (priority === "Urgente") {
+    return "pink";
+  }
+
+  if (priority === "Alta") {
+    return "red";
+  }
+
+  if (priority === "Media") {
+    return "yellow";
+  }
+
+  if (priority === "Baixa") {
+    return "green";
+  }
+
+  return "blue";
+}
+
 function extractLinearIdentifier(linearUrl: string) {
   const trimmedUrl = linearUrl.trim();
 
@@ -4642,7 +4730,10 @@ function CreateItemModal({
             </label>
             <label>
               <span>Story Point</span>
-              <input min={0} type="number" value={itemStoryPoints} onChange={(event) => setItemStoryPoints(event.target.value)} placeholder="Vazio" />
+              <select value={itemStoryPoints} onChange={(event) => setItemStoryPoints(event.target.value)}>
+                <option value="">Sem estimativa</option>
+                {linearEstimateOptions.map((option) => <option key={option} value={option}>{option} {option === 1 ? "ponto" : "pontos"}</option>)}
+              </select>
             </label>
           </div>
           <label>
@@ -4678,9 +4769,7 @@ function CreateItemModal({
           <label>
             <span>Prioridade</span>
             <select value={itemPriority} onChange={(event) => setItemPriority(event.target.value as Priority)}>
-              <option>Alta</option>
-              <option>Media</option>
-              <option>Baixa</option>
+              {priorityOptions.map((option) => <option key={option}>{option}</option>)}
             </select>
           </label>
 
@@ -6182,18 +6271,28 @@ function renderFieldTypeIcon(type?: BoardFieldType, size = 14) {
 function CardMetaEditor({
   description,
   estimate,
+  linearUrl,
   owner,
   points,
   priority,
-  onChange
+  onChange,
+  onSaveLinearLink
 }: {
   description?: string;
   estimate?: string;
+  linearUrl?: string;
   owner?: string;
   points?: number;
   priority?: Priority;
   onChange: (owner: string, points: number, estimate: string, priority: Priority, description: string) => void;
+  onSaveLinearLink?: (linearUrl: string) => void;
 }) {
+  const [draftLinearUrl, setDraftLinearUrl] = useState(linearUrl ?? "");
+
+  useEffect(() => {
+    setDraftLinearUrl(linearUrl ?? "");
+  }, [linearUrl]);
+
   function stopCardInteraction(event: SyntheticEvent) {
     event.stopPropagation();
   }
@@ -6210,21 +6309,15 @@ function CardMetaEditor({
       <label>
         <span>Prioridade</span>
         <select value={priority ?? "Media"} onChange={(event) => onChange(owner ?? "", points ?? 0, estimate ?? "", event.target.value as Priority, description ?? "")} aria-label="Prioridade do card">
-          <option>Alta</option>
-          <option>Media</option>
-          <option>Baixa</option>
+          {priorityOptions.map((option) => <option key={option}>{option}</option>)}
         </select>
       </label>
       <label>
         <span>Story Point</span>
-        <input
-          min={0}
-          type="number"
-          value={points ? String(points) : ""}
-          onChange={(event) => onChange(owner ?? "", event.target.value ? Number(event.target.value) : 0, estimate ?? "", priority ?? "Media", description ?? "")}
-          placeholder="SP"
-          aria-label="Story point do card"
-        />
+        <select value={points ? String(points) : ""} onChange={(event) => onChange(owner ?? "", event.target.value ? Number(event.target.value) : 0, estimate ?? "", priority ?? "Media", description ?? "")} aria-label="Story point do card">
+          <option value="">Sem estimativa</option>
+          {linearEstimateOptions.map((option) => <option key={option} value={option}>{option} {option === 1 ? "ponto" : "pontos"}</option>)}
+        </select>
       </label>
       {estimate !== undefined && (
         <label className="estimate-meta-field">
@@ -6246,6 +6339,22 @@ function CardMetaEditor({
           aria-label="Descricao do card"
         />
       </label>
+      {onSaveLinearLink && (
+        <label className="estimate-meta-field linear-link-meta-field">
+          <span>Link Linear</span>
+          <span className="linear-link-editor">
+            <input
+              value={draftLinearUrl}
+              onChange={(event) => setDraftLinearUrl(event.target.value)}
+              placeholder="Cole o link ou deixe vazio"
+              aria-label="Link Linear do card"
+            />
+            <button type="button" onClick={() => onSaveLinearLink(draftLinearUrl)} aria-label="Salvar vinculo Linear" title="Salvar vinculo Linear">
+              <Save size={15} />
+            </button>
+          </span>
+        </label>
+      )}
     </div>
   );
 }
@@ -6328,7 +6437,7 @@ function BoardCardItem({
           })
         }
       />
-      <Badge tone={card.priority === "Alta" ? "red" : card.priority === "Media" ? "yellow" : "green"}>{card.priority}</Badge>
+      <Badge tone={getPriorityTone(card.priority)}>{card.priority}</Badge>
       {(card.owner || card.points > 0) && (
         <footer>
           {card.owner && <span className="owner-pill">{card.owner}</span>}
@@ -6426,7 +6535,7 @@ function TaskDetailsModal({
                 <h3>Formulario Inicial</h3>
                 <p>Criado por {task.createdBy ?? "Pipelbot"}{task.createdAt ? ` em ${task.createdAt}` : ""}</p>
               </div>
-              <Badge tone={task.priority === "Alta" ? "red" : task.priority === "Media" ? "yellow" : "green"}>{task.priority}</Badge>
+              <Badge tone={getPriorityTone(task.priority)}>{task.priority}</Badge>
             </div>
 
             <div className="initial-form-list">

@@ -1,4 +1,4 @@
-export type BacklogPriority = "Alta" | "Media" | "Baixa";
+export type BacklogPriority = "Sem prioridade" | "Urgente" | "Alta" | "Media" | "Baixa";
 
 export interface CreateBacklogIssueInput {
   name: string;
@@ -8,7 +8,7 @@ export interface CreateBacklogIssueInput {
   client?: string;
   owner?: string;
   priority?: BacklogPriority;
-  storyPoints?: number;
+  storyPoints?: number | null;
   linearIdentifier?: string;
   linearIssueId?: string;
   linearUrl?: string;
@@ -39,8 +39,8 @@ export interface UpdateBacklogIssueInput {
   linearIdentifier?: string;
   linearUrl?: string;
   priority?: BacklogPriority;
-  estimate?: number;
-  storyPoints?: number;
+  estimate?: number | null;
+  storyPoints?: number | null;
   owner?: string;
   status?: string;
   linearStateId?: string;
