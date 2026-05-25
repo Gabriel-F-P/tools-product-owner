@@ -569,6 +569,7 @@ interface TaskDetail {
   status?: string;
   owner?: string;
   points?: number;
+  estimate?: string;
   generalFields?: TaskFieldValue[];
   deliveryHistory?: DeliveryEntry[];
 }
@@ -4991,6 +4992,7 @@ function BoardPage({
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false);
   const [createTargetColumnIndex, setCreateTargetColumnIndex] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
+  const [selectedBoardCardTarget, setSelectedBoardCardTarget] = useState<{ columnIndex: number; cardIndex: number } | null>(null);
   const [ownerFilter, setOwnerFilter] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ columnIndex: number; cardIndex: number; title: string } | null>(null);
   const [integrationNotice, setIntegrationNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
@@ -5167,6 +5169,55 @@ function BoardPage({
     setCreateTargetColumnIndex(null);
   }
 
+  function openBoardCardDetails(card: BoardCard, columnIndex: number, cardIndex: number, status: string) {
+    setSelectedBoardCardTarget({ columnIndex, cardIndex });
+    setSelectedTask(toBoardTaskDetail(card, status, columns));
+  }
+
+  function saveBoardCardDetails(updates: Partial<Pick<BoardCard, "description" | "estimate" | "owner" | "points" | "priority" | "title">>) {
+    if (!selectedBoardCardTarget) {
+      return;
+    }
+
+    const { columnIndex, cardIndex } = selectedBoardCardTarget;
+    const currentCard = visibleColumns[columnIndex]?.cards[cardIndex];
+    const nextCard = currentCard
+      ? {
+          ...currentCard,
+          ...updates,
+          generalFields: getGeneralFieldValues(
+            updates.title ?? currentCard.title,
+            updates.owner ?? currentCard.owner,
+            updates.points ?? currentCard.points
+          )
+        }
+      : null;
+
+    if (!nextCard) {
+      return;
+    }
+
+    onColumnsChange(
+      visibleColumns.map((column, currentColumnIndex) =>
+        currentColumnIndex === columnIndex
+          ? {
+              ...column,
+              cards: column.cards.map((card, currentCardIndex) =>
+                currentCardIndex === cardIndex ? nextCard : card
+              )
+            }
+          : column
+      )
+    );
+
+    void syncBoardIssueUpdate(nextCard, visibleColumns[columnIndex]?.title).catch((error) => {
+      const message = error instanceof Error ? error.message : "Integracao indisponivel.";
+      setIntegrationNotice({ tone: "error", message: `O card foi atualizado localmente, mas nao foi atualizado no Linear. ${message}` });
+    });
+    setSelectedTask(null);
+    setSelectedBoardCardTarget(null);
+  }
+
   return (
     <main className="dashboard board-page">
       <Topbar title="Board" subtitle="Acompanhe o progresso dos itens de delivery" theme={theme} onToggleTheme={onToggleTheme} />
@@ -5251,7 +5302,7 @@ function BoardPage({
                   onDragOver={handleDragOver}
                   onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
                   onDrop={(event) => handleDrop(event, columnIndex, cardIndex)}
-                  onOpenDetails={() => setSelectedTask(toBoardTaskDetail(card, column.title, columns))}
+                  onOpenDetails={() => openBoardCardDetails(card, columnIndex, cardIndex, column.title)}
                   onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
                 />
               ))}
@@ -5291,7 +5342,18 @@ function BoardPage({
           backlogColumns={backlogColumns}
         />
       )}
-      {selectedTask && <TaskDetailsModal task={selectedTask} onClose={() => setSelectedTask(null)} />}
+      {selectedTask && (
+        <TaskDetailsModal
+          editable={Boolean(selectedBoardCardTarget)}
+          members={members}
+          onClose={() => {
+            setSelectedTask(null);
+            setSelectedBoardCardTarget(null);
+          }}
+          onSave={saveBoardCardDetails}
+          task={selectedTask}
+        />
+      )}
       {createTargetColumnIndex !== null && (
         <CreateItemModal
           categories={categories}
@@ -5404,6 +5466,7 @@ function toBoardTaskDetail(card: BoardCard, status: string, columns: BoardColumn
     status,
     owner: card.owner,
     points: card.points,
+    estimate: card.estimate,
     createdAt: card.createdAt,
     createdBy: card.createdBy,
     generalFields: card.generalFields,
@@ -6522,7 +6585,7 @@ function BoardCardItem({
       }}
     >
       <header>
-        <span>ID</span>
+        <span>{card.priority}</span>
         <div className="card-header-actions">
           {issueDisplayId && <small>Linear {issueDisplayId}</small>}
           {card.done && <CheckCircle2 size={16} />}
@@ -6541,7 +6604,6 @@ function BoardCardItem({
           </button>
         </div>
       </header>
-      <small className="kanban-card-id">{card.id}</small>
       <h3>{card.title}</h3>
       <footer>
         <span className={`board-card-pill priority-pill ${getPriorityTone(card.priority)}`}>
@@ -6606,36 +6668,64 @@ function DeleteCardConfirmModal({
 function TaskDetailsModal({
   aiConfig,
   aiItem,
+  editable = false,
+  members = [],
   onAiChange,
+  onSave,
   task,
   onClose
 }: {
   aiConfig?: { story: boolean; criteria: boolean; sp: boolean };
   aiItem?: BacklogItem;
+  editable?: boolean;
+  members?: ProductMember[];
   onAiChange?: (updates: Partial<Pick<BacklogItem, "aiStory" | "aiCriteria" | "aiStoryPoints">>) => void;
+  onSave?: (updates: Partial<Pick<BoardCard, "description" | "estimate" | "owner" | "points" | "priority" | "title">>) => void;
   task: TaskDetail;
   onClose: () => void;
 }) {
   const deliveryHistory = task.deliveryHistory ?? [];
   const [openDeliveryTab, setOpenDeliveryTab] = useState(deliveryHistory[0]?.tabTitle ?? "");
+  const [draftTitle, setDraftTitle] = useState(task.title);
+  const [draftOwner, setDraftOwner] = useState(task.owner ?? "");
+  const [draftPoints, setDraftPoints] = useState(task.points ? String(task.points) : "");
+  const [draftEstimate, setDraftEstimate] = useState(task.estimate ?? "");
+  const [draftPriority, setDraftPriority] = useState<Priority>(task.priority);
+  const [draftDescription, setDraftDescription] = useState(task.description ?? "");
   const initialFields: TaskFieldValue[] = [
-    { id: "initial-title", label: "Titulo", value: task.title, type: "Texto curto" },
+    { id: "initial-title", label: "Titulo", value: draftTitle, type: "Texto curto" },
     { id: "initial-origin", label: "Origem", value: task.source, type: "Lista" },
     ...(task.status ? [{ id: "initial-status", label: "Status", value: task.status, type: "Lista" as BoardFieldType }] : []),
-    ...(task.owner ? [{ id: "initial-owner", label: "Responsavel", value: task.owner, type: "Pessoa" as BoardFieldType }] : []),
-    ...(task.points ? [{ id: "initial-points", label: "Story points", value: String(task.points), type: "Numero" as BoardFieldType }] : []),
+    ...(draftOwner ? [{ id: "initial-owner", label: "Responsavel", value: draftOwner, type: "Pessoa" as BoardFieldType }] : []),
+    ...(draftPoints ? [{ id: "initial-points", label: "Story points", value: draftPoints, type: "Numero" as BoardFieldType }] : []),
     ...(task.sprint ? [{ id: "initial-sprint", label: "Sprint", value: task.sprint, type: "Lista" as BoardFieldType }] : []),
     ...(task.category ? [{ id: "initial-category", label: "Categoria", value: task.category, type: "Lista" as BoardFieldType }] : []),
     ...(task.generalFields ?? [])
   ];
+
+  function saveDetails() {
+    if (!editable || !onSave) {
+      onClose();
+      return;
+    }
+
+    onSave({
+      description: draftDescription.trim() || undefined,
+      estimate: draftEstimate.trim() || undefined,
+      owner: draftOwner,
+      points: draftPoints ? Number(draftPoints) : 0,
+      priority: draftPriority,
+      title: draftTitle.trim() || task.title
+    });
+  }
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="create-item-panel modal-panel task-detail-panel" role="dialog" aria-modal="true" aria-labelledby="task-detail-title" onMouseDown={(event) => event.stopPropagation()}>
         <header>
           <div>
-            <h2 id="task-detail-title">{task.id}</h2>
-            <p>{task.title}</p>
+            <h2 id="task-detail-title">{editable ? draftTitle || task.title : task.title}</h2>
+            <p>{task.id}</p>
           </div>
           <button type="button" aria-label="Fechar" onClick={onClose}>
             <X size={22} />
@@ -6649,24 +6739,57 @@ function TaskDetailsModal({
                 <h3>Formulario Inicial</h3>
                 <p>Criado por {task.createdBy ?? "Pipelbot"}{task.createdAt ? ` em ${task.createdAt}` : ""}</p>
               </div>
-              <Badge tone={getPriorityTone(task.priority)}>{task.priority}</Badge>
+              <Badge tone={getPriorityTone(draftPriority)}>{draftPriority}</Badge>
             </div>
 
-            <div className="initial-form-list">
-              {initialFields.map((field) => (
-                <div className="initial-form-row" key={field.id}>
-                  <span className="field-type-icon">{renderFieldTypeIcon(field.type)}</span>
-                  <div>
-                    <span>* {field.label}</span>
-                    <p>{field.value}</p>
+            {editable ? (
+              <div className="task-edit-grid">
+                <label className="task-edit-field full">
+                  <span>Titulo</span>
+                  <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} />
+                </label>
+                <label className="task-edit-field">
+                  <span>Responsavel</span>
+                  <select value={draftOwner} onChange={(event) => setDraftOwner(event.target.value)}>
+                    <option value="">Sem responsavel</option>
+                    {members.map((member) => <option value={member.name} key={member.id}>{member.name}</option>)}
+                  </select>
+                </label>
+                <label className="task-edit-field">
+                  <span>Prioridade</span>
+                  <select value={draftPriority} onChange={(event) => setDraftPriority(event.target.value as Priority)}>
+                    {priorityOptions.map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+                <label className="task-edit-field">
+                  <span>Story point</span>
+                  <select value={draftPoints} onChange={(event) => setDraftPoints(event.target.value)}>
+                    <option value="">Sem estimativa</option>
+                    {linearEstimateOptions.map((option) => <option key={option} value={option}>{option} {option === 1 ? "ponto" : "pontos"}</option>)}
+                  </select>
+                </label>
+                <label className="task-edit-field">
+                  <span>Estimativa</span>
+                  <input value={draftEstimate} onChange={(event) => setDraftEstimate(event.target.value)} placeholder="Sem estimativa" />
+                </label>
+              </div>
+            ) : (
+              <div className="initial-form-list">
+                {initialFields.map((field) => (
+                  <div className="initial-form-row" key={field.id}>
+                    <span className="field-type-icon">{renderFieldTypeIcon(field.type)}</span>
+                    <div>
+                      <span>* {field.label}</span>
+                      <p>{field.value}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             <label className="task-detail-description">
               <span>Descricao</span>
-              <textarea value={task.description || `Detalhes da demanda: ${task.title}`} readOnly />
+              <textarea value={draftDescription} onChange={(event) => setDraftDescription(event.target.value)} placeholder={`Detalhes da demanda: ${task.title}`} readOnly={!editable} />
             </label>
           </section>
 
@@ -6727,7 +6850,7 @@ function TaskDetailsModal({
 
         <footer>
           <button className="secondary-button" type="button" onClick={onClose}>Fechar</button>
-          <button className="primary-button" type="button" onClick={onClose}>Salvar</button>
+          <button className="primary-button" type="button" onClick={saveDetails}>Salvar</button>
         </footer>
       </section>
     </div>

@@ -3920,6 +3920,20 @@ input[type="checkbox"] {
   width: min(1080px, 100%);
 }
 
+.task-detail-panel > header h2 {
+  margin: 0;
+  color: #101b31;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.task-detail-panel > header p {
+  margin: 7px 0 0;
+  color: #7b8799;
+  font-size: 14px;
+  font-weight: 760;
+}
+
 .delete-card-modal {
   width: min(480px, calc(100vw - 32px));
   padding: 24px;
@@ -4041,6 +4055,42 @@ input[type="checkbox"] {
   font-size: 14px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.task-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-edit-field {
+  display: grid;
+  gap: 7px;
+}
+
+.task-edit-field.full {
+  grid-column: 1 / -1;
+}
+
+.task-edit-field span {
+  color: #657187;
+  font-size: 11px;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.task-edit-field input,
+.task-edit-field select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid #dbe2ec;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .task-detail-grid {
@@ -5524,6 +5574,8 @@ input[type="checkbox"] {
 :root[data-theme="dark"] .delivery-collapse,
 :root[data-theme="dark"] .empty-delivery,
 :root[data-theme="dark"] .task-detail-description textarea,
+:root[data-theme="dark"] .task-edit-field input,
+:root[data-theme="dark"] .task-edit-field select,
 :root[data-theme="dark"] .card-meta-editor select,
 :root[data-theme="dark"] .card-meta-editor input,
 :root[data-theme="dark"] .calendar-estimate-field input,
@@ -5612,6 +5664,7 @@ input[type="checkbox"] {
 :root[data-theme="dark"] .board-sprint-select,
 :root[data-theme="dark"] .board-sprint-meta strong,
 :root[data-theme="dark"] .board-sprint-meta textarea,
+:root[data-theme="dark"] .task-detail-panel > header h2,
 :root[data-theme="dark"] .backlog-row,
 :root[data-theme="dark"] .backlog-epic-items button,
 :root[data-theme="dark"] .task-detail-row strong,
