@@ -202,7 +202,23 @@ function findCreatedIssueRecord(result: unknown): Record<string, unknown> | null
   return null;
 }
 
-export function applyCreatedIssueLink<TItem extends BacklogItem>(item: TItem, result: unknown): TItem {
+type LinearLinkedItem = {
+  category?: string;
+  client?: string;
+  description?: string;
+  linearIdentifier?: string;
+  linearIssueId?: string;
+  linearUrl?: string;
+  name?: string;
+  owner?: string;
+  points?: number;
+  priority?: BacklogItem["priority"];
+  sprint?: string;
+  storyPoints?: number;
+  title?: string;
+};
+
+export function applyCreatedIssueLink<TItem extends LinearLinkedItem>(item: TItem, result: unknown): TItem {
   const issueRecord = findCreatedIssueRecord(result);
 
   if (!issueRecord) {
@@ -226,6 +242,7 @@ export function applyCreatedIssueLink<TItem extends BacklogItem>(item: TItem, re
   return {
     ...item,
     name: title ?? item.name,
+    title: title ?? item.title,
     description: description ?? item.description,
     owner: owner ?? item.owner,
     sprint: sprint ?? item.sprint,
@@ -233,10 +250,11 @@ export function applyCreatedIssueLink<TItem extends BacklogItem>(item: TItem, re
     client: client ?? item.client,
     priority,
     storyPoints: storyPoints ?? item.storyPoints,
+    points: storyPoints ?? item.points,
     linearIdentifier: identifier,
     linearIssueId: issueId,
     linearUrl: url
-  };
+  } as TItem;
 }
 
 function getResponseString(value: unknown) {

@@ -4478,6 +4478,14 @@ input[type="checkbox"] {
   border: 1px solid #9aa8bd;
 }
 
+.create-item-panel .form-error {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  color: #f04438;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .connections-builder {
   display: grid;
   gap: 12px;

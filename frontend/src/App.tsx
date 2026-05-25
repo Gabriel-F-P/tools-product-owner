@@ -63,6 +63,7 @@ type Page = "dashboard" | "backlog" | "board" | "sprints" | "clients" | "reports
 type Theme = "light" | "dark";
 type ViewMode = "card" | "list";
 type UserPermission = "Membro" | "Admin";
+type LinearCreateAction = "none" | "link" | "create";
 type BoardTabColor = "blue" | "purple" | "orange" | "red" | "green" | "pink" | "cyan" | "teal" | "indigo" | "slate";
 type BoardTabIcon = "columns" | "dot" | "lock" | "list" | "rocket" | "shield";
 type BoardFieldType = "Texto curto" | "Texto longo" | "Numero" | "Data" | "Lista" | "Sim/Nao" | "Pessoa";
@@ -83,6 +84,10 @@ type WorkspaceStateSnapshot = Partial<{
 type WorkspaceStateResponse = {
   data?: WorkspaceStateSnapshot | null;
   updatedAt?: string | null;
+};
+type CreateItemInput = {
+  item: Omit<BacklogItem, "order" | "createdAt">;
+  linearAction: LinearCreateAction;
 };
 
 const workspaceStateStorageKey = "toolz-workspace-state-v2";
@@ -987,6 +992,8 @@ export function App() {
           }}
           onInitialVisibleTabsChange={setInitialVisibleTabs}
           backlogColumns={backlogConfig}
+          categories={categoryConfig}
+          clients={clientConfig}
           sprintBacklogItems={sprintBacklogItems}
           sprints={sprintConfig}
           sprintStatuses={sprintStatusConfig}
@@ -2909,7 +2916,7 @@ function BacklogPage({
     setIsCreateEpicModalOpen(false);
   }
 
-  async function handleCreateItem(item: Omit<BacklogItem, "order" | "createdAt">) {
+  async function handleCreateItem({ item, linearAction }: CreateItemInput) {
     const nextOrder = totalEntries + 1;
     const today = new Date().toLocaleDateString("pt-BR");
     let newItem: BacklogItem = {
@@ -2918,30 +2925,32 @@ function BacklogPage({
       createdAt: today
     };
 
-    try {
-      const result = await createIssue({
-        category: item.category,
-        client: item.client,
-        description: item.description,
-        linearIdentifier: item.linearIdentifier,
-        linearIssueId: item.linearIssueId,
-        linearUrl: item.linearUrl,
-        name: item.name,
-        owner: item.owner,
-        priority: item.priority,
-        sprint: item.sprint,
-        storyPoints: item.storyPoints
-      });
-      newItem = applyCreatedIssueLink(newItem, result);
-      setIntegrationNotice({
-        tone: newItem.linearIssueId ? "success" : "error",
-        message: newItem.linearIssueId
-          ? "Item enviado para a integracao Linear/n8n."
-          : "Item enviado ao n8n, mas a resposta nao trouxe o id real da issue Linear."
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Integracao indisponivel.";
-      setIntegrationNotice({ tone: "error", message: `O item foi criado localmente, mas nao foi enviado ao Linear. ${message}` });
+    if (linearAction !== "none") {
+      try {
+        const result = await createIssue({
+          category: item.category,
+          client: item.client,
+          description: item.description,
+          linearIdentifier: item.linearIdentifier,
+          linearIssueId: item.linearIssueId,
+          linearUrl: item.linearUrl,
+          name: item.name,
+          owner: item.owner,
+          priority: item.priority,
+          sprint: item.sprint,
+          storyPoints: item.storyPoints
+        });
+        newItem = applyCreatedIssueLink(newItem, result);
+        setIntegrationNotice({
+          tone: newItem.linearIssueId ? "success" : "error",
+          message: newItem.linearIssueId
+            ? linearAction === "link" ? "Issue Linear vinculada ao item." : "Item criado na integracao Linear/n8n."
+            : "A integracao Linear/n8n respondeu, mas nao trouxe o id real da issue Linear."
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Integracao indisponivel.";
+        setIntegrationNotice({ tone: "error", message: `O item foi criado localmente, mas nao foi ${linearAction === "link" ? "vinculado ao" : "criado no"} Linear. ${message}` });
+      }
     }
 
     onColumnsChange(
@@ -4689,38 +4698,58 @@ function extractLinearIdentifier(linearUrl: string) {
 function CreateItemModal({
   categories,
   clients,
+  defaultSprint,
+  mode = "backlog",
   onClose,
   onCreate,
+  submitLabel,
   sprints
 }: {
   categories: CategoryConfig[];
   clients: ClientAccount[];
+  defaultSprint?: string;
+  mode?: "backlog" | "board";
   onClose: () => void;
-  onCreate: (item: Omit<BacklogItem, "order" | "createdAt">) => void;
+  onCreate: (input: CreateItemInput) => void;
+  submitLabel?: string;
   sprints: SprintPlan[];
 }) {
   const [itemName, setItemName] = useState("");
   const [itemDescription, setItemDescription] = useState("");
-  const [itemSprint, setItemSprint] = useState(sprints[0]?.name ?? "Em planejamento");
+  const [itemSprint, setItemSprint] = useState(defaultSprint ?? sprints[0]?.name ?? "Em planejamento");
   const [itemCategory, setItemCategory] = useState(categories[0]?.name ?? "Melhoria");
   const [itemPriority, setItemPriority] = useState<Priority>("Media");
   const [itemOwner, setItemOwner] = useState("");
   const [itemStoryPoints, setItemStoryPoints] = useState("");
   const [itemClient, setItemClient] = useState("");
   const [itemLinearUrl, setItemLinearUrl] = useState("");
+  const [shouldCreateLinearIssue, setShouldCreateLinearIssue] = useState(false);
+  const [formError, setFormError] = useState("");
 
   function handleCreate() {
+    const trimmedLinearUrl = itemLinearUrl.trim();
+
+    if (trimmedLinearUrl && shouldCreateLinearIssue) {
+      setFormError("Escolha apenas uma opcao: vincular um link existente ou criar uma nova issue no Linear.");
+      return;
+    }
+
+    const linearAction: LinearCreateAction = trimmedLinearUrl ? "link" : shouldCreateLinearIssue ? "create" : "none";
+    setFormError("");
     onCreate({
+      linearAction,
+      item: {
       name: itemName.trim() || "Tarefa sem titulo",
       sprint: itemSprint,
       category: itemCategory,
       priority: itemPriority,
       description: itemDescription.trim() || undefined,
       client: itemClient || undefined,
-      linearIdentifier: extractLinearIdentifier(itemLinearUrl) || undefined,
-      linearUrl: itemLinearUrl.trim() || undefined,
+      linearIdentifier: trimmedLinearUrl ? extractLinearIdentifier(trimmedLinearUrl) || undefined : undefined,
+      linearUrl: trimmedLinearUrl || undefined,
       owner: itemOwner || undefined,
       storyPoints: itemStoryPoints ? Number(itemStoryPoints) : undefined
+      }
     });
   }
 
@@ -4730,7 +4759,7 @@ function CreateItemModal({
         <header>
           <div>
             <h2 id="create-item-title">Adicionar novo item</h2>
-            <p>O item sera criado no Linear e na planilha Google.</p>
+            <p>{mode === "board" ? "Crie um card no board e defina como ele se relaciona com o Linear." : "Crie o item no backlog e defina como ele se relaciona com o Linear."}</p>
           </div>
           <button type="button" aria-label="Fechar" onClick={onClose}>
             <X size={22} />
@@ -4765,8 +4794,13 @@ function CreateItemModal({
           </label>
           <label>
             <span>Link Linear</span>
-            <input value={itemLinearUrl} onChange={(event) => setItemLinearUrl(event.target.value)} placeholder="Cole o link da issue existente ou deixe vazio para criar uma nova" />
+            <input value={itemLinearUrl} onChange={(event) => setItemLinearUrl(event.target.value)} placeholder="Cole o link da issue existente" />
           </label>
+          <label className="inline-check add-to-sprint-check">
+            <input checked={shouldCreateLinearIssue} type="checkbox" onChange={(event) => setShouldCreateLinearIssue(event.target.checked)} />
+            Criar nova issue no Linear se o link estiver vazio
+          </label>
+          {formError && <p className="form-error">{formError}</p>}
           <div className="epic-item-row">
             <label>
               <span>Cliente</span>
@@ -4800,7 +4834,7 @@ function CreateItemModal({
 
         <footer>
           <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
-          <button className="primary-button" type="button" onClick={handleCreate}>Adicionar ao backlog</button>
+          <button className="primary-button" type="button" onClick={handleCreate}>{submitLabel ?? "Adicionar ao backlog"}</button>
         </footer>
       </section>
     </div>
@@ -4919,6 +4953,8 @@ function BoardPage({
   onCardMovedToColumn,
   onInitialVisibleTabsChange,
   backlogColumns,
+  categories,
+  clients,
   sprintBacklogItems,
   sprints,
   sprintStatuses,
@@ -4933,6 +4969,8 @@ function BoardPage({
   onCardMovedToColumn: (cardTitle: string, columnTitle: string) => void;
   onInitialVisibleTabsChange: (value: number) => void;
   backlogColumns: BacklogColumn[];
+  categories: CategoryConfig[];
+  clients: ClientAccount[];
   sprintBacklogItems: BacklogItem[];
   sprints: SprintPlan[];
   sprintStatuses: SprintStatus[];
@@ -4942,6 +4980,7 @@ function BoardPage({
 }) {
   const [draggedCard, setDraggedCard] = useState<DraggedCard | null>(null);
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false);
+  const [createTargetColumnIndex, setCreateTargetColumnIndex] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [deleteTarget, setDeleteTarget] = useState<{ columnIndex: number; cardIndex: number; title: string } | null>(null);
@@ -5098,6 +5137,60 @@ function BoardPage({
     onSprintsChange(sprints.map((sprint) => sprint.id === selectedSprint.id ? { ...sprint, objective } : sprint));
   }
 
+  async function handleCreateBoardCard({ item, linearAction }: CreateItemInput) {
+    if (createTargetColumnIndex === null) {
+      return;
+    }
+
+    let newCard: BoardCard = {
+      id: `#${Date.now()}`,
+      title: item.name,
+      priority: item.priority,
+      owner: item.owner ?? "",
+      points: item.storyPoints ?? 0,
+      description: item.description,
+      createdAt: new Date().toLocaleDateString("pt-BR"),
+      createdBy: "Board",
+      linearIdentifier: item.linearIdentifier,
+      linearUrl: item.linearUrl,
+      generalFields: getGeneralFieldValues(item.name, item.owner ?? "", item.storyPoints ?? 0)
+    };
+
+    if (linearAction !== "none") {
+      try {
+        const result = await createIssue({
+          category: item.category,
+          client: item.client,
+          description: item.description,
+          linearIdentifier: item.linearIdentifier,
+          linearUrl: item.linearUrl,
+          name: item.name,
+          owner: item.owner,
+          priority: item.priority,
+          sprint: item.sprint,
+          storyPoints: item.storyPoints
+        });
+        newCard = applyCreatedIssueLink(newCard, result);
+        setIntegrationNotice({
+          tone: newCard.linearIssueId ? "success" : "error",
+          message: newCard.linearIssueId
+            ? linearAction === "link" ? "Issue Linear vinculada ao card." : "Card criado na integracao Linear/n8n."
+            : "A integracao Linear/n8n respondeu, mas nao trouxe o id real da issue Linear."
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Integracao indisponivel.";
+        setIntegrationNotice({ tone: "error", message: `O card foi criado localmente, mas nao foi ${linearAction === "link" ? "vinculado ao" : "criado no"} Linear. ${message}` });
+      }
+    }
+
+    onColumnsChange(
+      columns.map((column, columnIndex) =>
+        columnIndex === createTargetColumnIndex ? { ...column, cards: [newCard, ...column.cards] } : column
+      )
+    );
+    setCreateTargetColumnIndex(null);
+  }
+
   return (
     <main className="dashboard board-page">
       <Topbar title="Board" subtitle="Acompanhe o progresso dos itens de delivery" theme={theme} onToggleTheme={onToggleTheme} />
@@ -5166,7 +5259,7 @@ function BoardPage({
               <h2>{column.title}</h2>
               <ColumnDescriptionButton description={column.description} title={column.title} />
               <span className="column-count">{column.cards.length}</span>
-              <button type="button" aria-label={`Adicionar card em ${column.title}`}>
+              <button type="button" aria-label={`Adicionar card em ${column.title}`} onClick={() => setCreateTargetColumnIndex(columnIndex)}>
                 <Plus size={18} />
               </button>
             </header>
@@ -5188,7 +5281,7 @@ function BoardPage({
               ))}
             </div>
 
-            <button className="add-card-button" type="button">
+            <button className="add-card-button" type="button" onClick={() => setCreateTargetColumnIndex(columnIndex)}>
               <Plus size={17} />
               Adicionar card
             </button>
@@ -5223,6 +5316,18 @@ function BoardPage({
         />
       )}
       {selectedTask && <TaskDetailsModal task={selectedTask} onClose={() => setSelectedTask(null)} />}
+      {createTargetColumnIndex !== null && (
+        <CreateItemModal
+          categories={categories}
+          clients={clients}
+          defaultSprint={selectedSprint?.name}
+          mode="board"
+          onClose={() => setCreateTargetColumnIndex(null)}
+          onCreate={handleCreateBoardCard}
+          sprints={sprints}
+          submitLabel="Adicionar ao board"
+        />
+      )}
       {deleteTarget && (
         <DeleteCardConfirmModal
           itemName={deleteTarget.title}
