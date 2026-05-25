@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "start": "node scripts/start.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
