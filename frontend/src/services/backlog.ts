@@ -173,7 +173,11 @@ function findCreatedIssueRecord(result: unknown): Record<string, unknown> | null
   const directIssue = record.issue ?? record.data ?? record.node;
 
   if (directIssue && typeof directIssue === "object") {
-    return directIssue as Record<string, unknown>;
+    const issue = findCreatedIssueRecord(directIssue);
+
+    if (issue) {
+      return issue;
+    }
   }
 
   if (

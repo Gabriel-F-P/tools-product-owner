@@ -47,6 +47,19 @@ interface LinearUser {
   email?: string;
 }
 
+interface LinkedLinearIssueNode {
+  id: string;
+  identifier: string;
+  title: string;
+  description?: string | null;
+  priority?: number | null;
+  estimate?: number | null;
+  url: string;
+  assignee?: { name?: string | null; displayName?: string | null; email?: string | null } | null;
+  cycle?: { name?: string | null } | null;
+  labels?: { nodes: Array<{ name: string }> };
+}
+
 const createdIssuesByTitle = new Map<string, CreatedLinearIssue>();
 
 const priorityMap: Record<BacklogPriority, number> = {
@@ -383,68 +396,49 @@ async function findLinkedLinearIssue(input: CreateBacklogIssueInput): Promise<Cr
   const config = getLinearConfig(input);
   const identifier = input.linearIdentifier ?? getLinearIdentifierFromUrl(input.linearUrl);
   const issueId = input.linearIssueId;
+  const term = issueId ?? identifier;
 
-  if (!config.apiKey || (!identifier && !issueId && !input.linearUrl)) {
+  if (!config.apiKey || !term) {
     return undefined;
   }
 
   const client = createLinearClient({ apiKey: config.apiKey });
   const data = await client.request<{
-    issues: {
-      nodes: Array<{
-        id: string;
-        identifier: string;
-        title: string;
-        description?: string | null;
-        priority?: number | null;
-        estimate?: number | null;
-        url: string;
-        assignee?: { name?: string | null; displayName?: string | null; email?: string | null } | null;
-        cycle?: { name?: string | null } | null;
-        labels?: { nodes: Array<{ name: string }> };
-      }>;
-    };
+    issue?: LinkedLinearIssueNode | null;
   }>(
     `
       query FindLinkedIssue($term: String!) {
-        issues(first: 10, filter: { or: [
-          { id: { eq: $term } },
-          { identifier: { eq: $term } },
-          { url: { eq: $term } }
-        ] }) {
-          nodes {
-            id
-            identifier
-            title
-            description
-            priority
-            estimate
-            url
-            assignee {
+        issue(id: $term) {
+          id
+          identifier
+          title
+          description
+          priority
+          estimate
+          url
+          assignee {
+            name
+            displayName
+            email
+          }
+          cycle {
+            name
+          }
+          labels {
+            nodes {
               name
-              displayName
-              email
-            }
-            cycle {
-              name
-            }
-            labels {
-              nodes {
-                name
-              }
             }
           }
         }
       }
     `,
-    { term: issueId ?? identifier ?? input.linearUrl ?? "" }
+    { term }
   );
-  const issue = data.issues.nodes[0];
 
-  if (!issue) {
-    return undefined;
-  }
+  return data.issue ? toCreatedLinearIssue(data.issue) : undefined;
+}
 
+function toCreatedLinearIssue(issue: LinkedLinearIssueNode): CreatedLinearIssue {
   const labels = issue.labels?.nodes.map((label) => label.name) ?? [];
 
   return {
