@@ -54,6 +54,7 @@ import type { DashboardData, Metric, Status } from "./types/dashboard";
 import type { BacklogEntry, BacklogEpic, BacklogItem, BacklogPriority } from "./types/backlog";
 import { applyCreatedIssueLink, archiveIssue, createEpic, createIssue, toCreateEpicPayload, updateIssue } from "./services/backlog";
 import type { UpdateIssueResult } from "./services/backlog";
+import { apiUrl } from "./services/api";
 import { getDashboard } from "./services/dashboard";
 import { mockDashboard } from "./services/mockDashboard";
 
@@ -779,7 +780,7 @@ export function App() {
       return;
     }
 
-    fetch("/api/workspace-state")
+    fetch(apiUrl("/api/workspace-state"))
       .then((response) => response.ok ? response.json() : { data: null })
       .then(({ data, updatedAt }: WorkspaceStateResponse) => {
         const storedState = window.localStorage.getItem(workspaceStateStorageKey);
@@ -802,7 +803,7 @@ export function App() {
     }
 
     const intervalId = window.setInterval(() => {
-      fetch("/api/workspace-state")
+      fetch(apiUrl("/api/workspace-state"))
         .then((response) => response.ok ? response.json() : null)
         .then((state: WorkspaceStateResponse | null) => {
           if (!state?.updatedAt || state.updatedAt === lastWorkspaceUpdatedAt) {
@@ -842,7 +843,7 @@ export function App() {
 
       window.localStorage.setItem(workspaceStateStorageKey, JSON.stringify(snapshot));
 
-      fetch("/api/workspace-state", {
+      fetch(apiUrl("/api/workspace-state"), {
         body: JSON.stringify(snapshot),
         headers: { "Content-Type": "application/json" },
         method: "PUT"
@@ -1996,7 +1997,7 @@ function ApisPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =>
   const [saveStatus, setSaveStatus] = useState("");
 
   useEffect(() => {
-    fetch("/api/integrations/settings")
+    fetch(apiUrl("/api/integrations/settings"))
       .then((response) => response.ok ? response.json() : defaultApiSettings)
       .then((settings: Partial<ApiSettings>) => {
         const storedSettings = window.localStorage.getItem(apiSettingsStorageKey);
@@ -2013,7 +2014,7 @@ function ApisPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =>
   async function saveApiSettings() {
     setSaveStatus("Salvando...");
     window.localStorage.setItem(apiSettingsStorageKey, JSON.stringify(apiSettings));
-    const response = await fetch("/api/integrations/settings", {
+    const response = await fetch(apiUrl("/api/integrations/settings"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(apiSettings)

@@ -1,4 +1,5 @@
 import type { BacklogEpic, BacklogItem } from "../types/backlog";
+import { apiUrl } from "./api";
 
 export interface CreateIssuePayload {
   name: string;
@@ -57,7 +58,7 @@ function getStoredIntegrationSettings() {
 }
 
 export async function createIssue(payload: CreateIssuePayload) {
-  const response = await fetch("/api/backlog/issues", {
+  const response = await fetch(apiUrl("/api/backlog/issues"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -75,7 +76,7 @@ export async function createIssue(payload: CreateIssuePayload) {
 
 export async function updateIssue(payload: UpdateIssuePayload): Promise<UpdateIssueResult> {
   const issueId = payload.linearIssueId || "__missing_linear_issue_id__";
-  const response = await fetch(`/api/backlog/issues/${encodeURIComponent(issueId)}`, {
+  const response = await fetch(apiUrl(`/api/backlog/issues/${encodeURIComponent(issueId)}`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -94,7 +95,7 @@ export async function updateIssue(payload: UpdateIssuePayload): Promise<UpdateIs
 export async function archiveIssue(payload: string | ArchiveIssuePayload) {
   const archivePayload = typeof payload === "string" ? { linearIssueId: payload } : payload;
   const issueId = archivePayload.linearIssueId || "__missing_linear_issue_id__";
-  const response = await fetch(`/api/backlog/issues/${encodeURIComponent(issueId)}`, {
+  const response = await fetch(apiUrl(`/api/backlog/issues/${encodeURIComponent(issueId)}`), {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -111,7 +112,7 @@ export async function archiveIssue(payload: string | ArchiveIssuePayload) {
 }
 
 export async function createEpic(payload: CreateEpicPayload) {
-  const response = await fetch("/api/backlog/epics", {
+  const response = await fetch(apiUrl("/api/backlog/epics"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
