@@ -568,6 +568,7 @@ interface TaskDetail {
   createdBy?: string;
   sprint?: string;
   category?: string;
+  client?: string;
   createdAt?: string;
   status?: string;
   owner?: string;
@@ -3167,7 +3168,7 @@ function BacklogPage({
   function updateBacklogEntryMeta(
     columnIndex: number,
     entryIndex: number,
-    updates: Partial<Pick<BacklogItem, "description" | "estimate" | "owner" | "priority" | "storyPoints" | "linearIdentifier" | "linearIssueId" | "linearUrl">>
+    updates: Partial<Pick<BacklogItem, "category" | "client" | "description" | "estimate" | "name" | "owner" | "priority" | "sprint" | "storyPoints" | "linearIdentifier" | "linearIssueId" | "linearUrl">>
   ) {
     const currentEntry = columns[columnIndex]?.entries[entryIndex];
     const nextEntry = currentEntry && !isEpic(currentEntry) ? { ...currentEntry, ...updates } : null;
@@ -3188,7 +3189,7 @@ function BacklogPage({
     if (nextEntry) {
       void syncBacklogIssueUpdate(nextEntry, columns[columnIndex]?.title).catch((error) => {
         const message = error instanceof Error ? error.message : "Integracao indisponivel.";
-        setIntegrationNotice({ tone: "error", message: `O responsavel ou estimativa mudou localmente, mas nao foi atualizado no Linear. ${message}` });
+        setIntegrationNotice({ tone: "error", message: `O card mudou localmente, mas nao foi atualizado no Linear. ${message}` });
       });
     }
   }
@@ -3426,7 +3427,26 @@ function BacklogPage({
         <TaskDetailsModal
           aiConfig={selectedBacklogTask.aiConfig}
           aiItem={selectedBacklogItem}
+          categories={categories}
+          clients={clients}
+          editable
+          members={members}
           onAiChange={(updates) => updateBacklogEntryAiFields(selectedBacklogTask.columnIndex, selectedBacklogTask.entryIndex, updates)}
+          onSave={(updates) => {
+            updateBacklogEntryMeta(selectedBacklogTask.columnIndex, selectedBacklogTask.entryIndex, {
+              category: updates.category,
+              client: updates.client,
+              description: updates.description,
+              estimate: updates.estimate,
+              name: updates.title,
+              owner: updates.owner,
+              priority: updates.priority,
+              sprint: updates.sprint,
+              storyPoints: updates.points
+            });
+            setSelectedBacklogTask(null);
+          }}
+          sprints={sprints}
           task={toBacklogTaskDetail(selectedBacklogItem)}
           onClose={() => setSelectedBacklogTask(null)}
         />
@@ -3941,6 +3961,7 @@ function toBacklogTaskDetail(item: BacklogItem): TaskDetail {
     description: item.description,
     sprint: item.sprint,
     category: item.category,
+    client: item.client,
     createdAt: item.createdAt,
     createdBy: "Amanda Silva",
     owner: item.owner,
@@ -5287,7 +5308,7 @@ function BoardPage({
     setSelectedTask(toBoardTaskDetail(card, status, columns));
   }
 
-  function saveBoardCardDetails(updates: Partial<Pick<BoardCard, "description" | "estimate" | "owner" | "points" | "priority" | "title">>) {
+  function saveBoardCardDetails(updates: Partial<Pick<BoardCard, "category" | "client" | "description" | "estimate" | "owner" | "points" | "priority" | "sprint" | "title">>) {
     if (!selectedBoardCardTarget) {
       return;
     }
@@ -5461,6 +5482,8 @@ function BoardPage({
       )}
       {selectedTask && (
         <TaskDetailsModal
+          categories={categories}
+          clients={clients}
           editable={Boolean(selectedBoardCardTarget)}
           members={members}
           onClose={() => {
@@ -5468,6 +5491,7 @@ function BoardPage({
             setSelectedBoardCardTarget(null);
           }}
           onSave={saveBoardCardDetails}
+          sprints={sprints}
           task={selectedTask}
         />
       )}
@@ -5586,6 +5610,7 @@ function toBoardTaskDetail(card: BoardCard, status: string, columns: BoardColumn
     estimate: card.estimate,
     sprint: card.sprint,
     category: card.category,
+    client: card.client,
     createdAt: card.createdAt,
     createdBy: card.createdBy,
     generalFields: card.generalFields,
@@ -6787,19 +6812,25 @@ function DeleteCardConfirmModal({
 function TaskDetailsModal({
   aiConfig,
   aiItem,
+  categories = [],
+  clients = [],
   editable = false,
   members = [],
   onAiChange,
   onSave,
+  sprints = [],
   task,
   onClose
 }: {
   aiConfig?: { story: boolean; criteria: boolean; sp: boolean };
   aiItem?: BacklogItem;
+  categories?: CategoryConfig[];
+  clients?: ClientAccount[];
   editable?: boolean;
   members?: ProductMember[];
   onAiChange?: (updates: Partial<Pick<BacklogItem, "aiStory" | "aiCriteria" | "aiStoryPoints">>) => void;
-  onSave?: (updates: Partial<Pick<BoardCard, "description" | "estimate" | "owner" | "points" | "priority" | "title">>) => void;
+  onSave?: (updates: Partial<Pick<BoardCard, "category" | "client" | "description" | "estimate" | "owner" | "points" | "priority" | "sprint" | "title">>) => void;
+  sprints?: SprintPlan[];
   task: TaskDetail;
   onClose: () => void;
 }) {
@@ -6811,14 +6842,18 @@ function TaskDetailsModal({
   const [draftEstimate, setDraftEstimate] = useState(task.estimate ?? "");
   const [draftPriority, setDraftPriority] = useState<Priority>(task.priority);
   const [draftDescription, setDraftDescription] = useState(task.description ?? "");
+  const [draftSprint, setDraftSprint] = useState(task.sprint ?? "");
+  const [draftCategory, setDraftCategory] = useState(task.category ?? "");
+  const [draftClient, setDraftClient] = useState(task.client ?? "");
   const initialFields: TaskFieldValue[] = [
     { id: "initial-title", label: "Titulo", value: draftTitle, type: "Texto curto" },
     { id: "initial-origin", label: "Origem", value: task.source, type: "Lista" },
     ...(task.status ? [{ id: "initial-status", label: "Status", value: task.status, type: "Lista" as BoardFieldType }] : []),
     ...(draftOwner ? [{ id: "initial-owner", label: "Responsavel", value: draftOwner, type: "Pessoa" as BoardFieldType }] : []),
     ...(draftPoints ? [{ id: "initial-points", label: "Story points", value: draftPoints, type: "Numero" as BoardFieldType }] : []),
-    ...(task.sprint ? [{ id: "initial-sprint", label: "Sprint", value: task.sprint, type: "Lista" as BoardFieldType }] : []),
-    ...(task.category ? [{ id: "initial-category", label: "Categoria", value: task.category, type: "Lista" as BoardFieldType }] : []),
+    ...(draftSprint ? [{ id: "initial-sprint", label: "Sprint", value: draftSprint, type: "Lista" as BoardFieldType }] : []),
+    ...(draftCategory ? [{ id: "initial-category", label: "Categoria", value: draftCategory, type: "Lista" as BoardFieldType }] : []),
+    ...(draftClient ? [{ id: "initial-client", label: "Empresa", value: draftClient, type: "Lista" as BoardFieldType }] : []),
     ...(task.generalFields ?? [])
   ];
 
@@ -6829,11 +6864,14 @@ function TaskDetailsModal({
     }
 
     onSave({
+      category: draftCategory || undefined,
+      client: draftClient || undefined,
       description: draftDescription.trim() || undefined,
       estimate: draftEstimate.trim() || undefined,
       owner: draftOwner,
       points: draftPoints ? Number(draftPoints) : 0,
       priority: draftPriority,
+      sprint: draftSprint || undefined,
       title: draftTitle.trim() || task.title
     });
   }
@@ -6890,6 +6928,27 @@ function TaskDetailsModal({
                 <label className="task-edit-field">
                   <span>Estimativa</span>
                   <input value={draftEstimate} onChange={(event) => setDraftEstimate(event.target.value)} placeholder="Sem estimativa" />
+                </label>
+                <label className="task-edit-field">
+                  <span>Sprint</span>
+                  <select value={draftSprint} onChange={(event) => setDraftSprint(event.target.value)}>
+                    <option value="">Sem sprint</option>
+                    {sprints.map((sprint) => <option value={sprint.name} key={sprint.id}>{sprint.name}</option>)}
+                  </select>
+                </label>
+                <label className="task-edit-field">
+                  <span>Categoria</span>
+                  <select value={draftCategory} onChange={(event) => setDraftCategory(event.target.value)}>
+                    <option value="">Sem categoria</option>
+                    {categories.map((category) => <option value={category.name} key={category.id}>{category.name}</option>)}
+                  </select>
+                </label>
+                <label className="task-edit-field full">
+                  <span>Empresa</span>
+                  <select value={draftClient} onChange={(event) => setDraftClient(event.target.value)}>
+                    <option value="">Sem empresa</option>
+                    {clients.map((client) => <option value={client.name} key={client.id}>{client.name}</option>)}
+                  </select>
                 </label>
               </div>
             ) : (
