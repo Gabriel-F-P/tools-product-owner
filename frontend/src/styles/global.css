@@ -1166,7 +1166,8 @@ p {
 
 .backlog-tab-card footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 10px;
   color: #657187;
   font-size: 12px;
@@ -1666,9 +1667,9 @@ input[type="checkbox"] {
 
 .calendar-item-card {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 14px;
-  padding: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 16px 16px 0;
   border: 1px solid #e3e8f0;
   border-radius: 8px;
   background: #ffffff;
@@ -1719,8 +1720,7 @@ input[type="checkbox"] {
 }
 
 .calendar-item-content {
-  display: grid;
-  gap: 8px;
+  display: none;
 }
 
 .calendar-item-content > div,
@@ -1750,6 +1750,23 @@ input[type="checkbox"] {
 
 .calendar-card-meta {
   justify-content: flex-end;
+}
+
+.sprint-estimate-pill input {
+  width: 104px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  outline: 0;
+}
+
+.sprint-estimate-pill input::placeholder {
+  color: currentColor;
+  opacity: 0.8;
 }
 
 .calendar-item-content small {

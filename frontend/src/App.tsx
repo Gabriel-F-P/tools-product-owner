@@ -3783,7 +3783,7 @@ function BacklogTabEntryCard({
       }}
     >
       <header>
-        <span>#{entry.order}</span>
+        <span>{entry.category}</span>
         <div className="card-header-actions">
           <small>{entry.createdAt}</small>
           <button
@@ -3802,41 +3802,26 @@ function BacklogTabEntryCard({
         </div>
       </header>
       <h3>{entry.name}</h3>
-      {issueDisplayId && <small>Linear {issueDisplayId}</small>}
-      <CardMetaEditor
-        description={entry.description ?? ""}
-        estimate={entry.estimate ?? ""}
-        members={members}
-        owner={entry.owner ?? ""}
-        points={entry.storyPoints ?? 0}
-        priority={entry.priority}
-        linearUrl={entry.linearUrl ?? ""}
-        onSaveLinearLink={onSaveLinearLink}
-        onChange={(owner, points, estimate, priority, description) =>
-          onUpdateMeta({
-            description: description || undefined,
-            estimate: estimate || undefined,
-            owner: owner || undefined,
-            priority,
-            storyPoints: points || undefined
-          })
-        }
-      />
-      <Badge tone={getPriorityTone(entry.priority)}>{entry.priority}</Badge>
       <footer>
-        <span>{entry.sprint}</span>
-        <span>{entry.category}</span>
-        {(entry.owner || entry.storyPoints) && (
-          <span className="card-meta-pills">
-            {entry.owner && <span className="owner-pill" title={entry.owner}>{getInitials(entry.owner)}</span>}
-            {!!entry.storyPoints && (
-              <span className="story-points">
-                <ListTodo size={15} />
-                {entry.storyPoints}
-              </span>
-            )}
+        <span className={`board-card-pill priority-pill ${getPriorityTone(entry.priority)}`}>
+          {entry.priority === "Alta" || entry.priority === "Urgente" ? <ArrowUp size={14} /> : entry.priority === "Baixa" ? <ArrowDown size={14} /> : <span className="priority-dash" />}
+          {entry.priority}
+        </span>
+        <span className="board-card-pill">
+          <ListTodo size={14} />
+          {entry.storyPoints || "SP"}
+        </span>
+        <span className="board-card-pill">
+          <CalendarDays size={14} />
+          {entry.estimate || "Sem estimativa"}
+        </span>
+        {entry.owner && (
+          <span className="board-card-pill owner-card-pill" title={entry.owner}>
+            <span className="owner-pill">{getInitials(entry.owner)}</span>
+            {entry.owner}
           </span>
         )}
+        {issueDisplayId && <small>Linear {issueDisplayId}</small>}
       </footer>
     </article>
   );
@@ -4280,44 +4265,39 @@ function BacklogCalendarView({
             <div className="calendar-item-list">
               {items.map((item) => (
                 <article
-                  className="calendar-item-card category-accent"
+                  className="calendar-item-card kanban-card category-accent"
                   key={item.order}
                   style={{ "--category-color": getBoardColorHex(getCategoryConfig(item.category, categories)?.color ?? "blue") } as CSSProperties}
                 >
-                  <div className="calendar-date">
-                    <strong>{item.createdAt.slice(0, 2)}</strong>
-                    <span>{item.createdAt.slice(3, 5)}</span>
-                  </div>
-                  <div className="calendar-item-content">
-                    <div>
-                      <span className="order-cell">{item.order}</span>
-                      <Badge tone={getCategoryTone(item.category)}>{item.category}</Badge>
+                  <header>
+                    <span>{item.category}</span>
+                    <div className="card-header-actions">
+                      {getIssueDisplayId(item) && <small>Linear {getIssueDisplayId(item)}</small>}
                     </div>
-                    <h4>{item.name}</h4>
-                    <footer>
-                      <span className="priority-cell">
-                        {item.priority === "Alta" && <ArrowUp size={16} />}
-                        {item.priority === "Baixa" && <ArrowDown size={16} />}
-                        {item.priority === "Media" && <span className="priority-dash" />}
-                        {item.priority}
-                      </span>
-                      <small>Linear</small>
-                    </footer>
-                    {(item.owner || item.storyPoints) && (
-                      <div className="calendar-card-meta">
-                        {item.owner && <span className="owner-pill">{item.owner}</span>}
-                        {!!item.storyPoints && (
-                          <span className="story-points">
-                            <ListTodo size={15} />
-                            {item.storyPoints}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <label className="calendar-estimate-field" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
-                      <span>Estimativa</span>
+                  </header>
+                  <h3>{item.name}</h3>
+                  <footer>
+                    <span className={`board-card-pill priority-pill ${getPriorityTone(item.priority)}`}>
+                      {item.priority === "Alta" || item.priority === "Urgente" ? <ArrowUp size={14} /> : item.priority === "Baixa" ? <ArrowDown size={14} /> : <span className="priority-dash" />}
+                      {item.priority}
+                    </span>
+                    <span className="board-card-pill">
+                      <ListTodo size={14} />
+                      {item.storyPoints || "SP"}
+                    </span>
+                    <label className="board-card-pill sprint-estimate-pill" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
+                      <CalendarDays size={14} />
                       <input value={item.estimate ?? ""} onChange={(event) => onUpdateItemEstimate(item.order, event.target.value)} placeholder="Sem estimativa" />
                     </label>
+                    {item.owner && (
+                      <span className="board-card-pill owner-card-pill" title={item.owner}>
+                        <span className="owner-pill">{getInitials(item.owner)}</span>
+                        {item.owner}
+                      </span>
+                    )}
+                  </footer>
+                  <div className="calendar-item-content">
+                    <span>{item.createdAt}</span>
                   </div>
                 </article>
               ))}
