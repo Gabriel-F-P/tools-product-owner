@@ -423,46 +423,90 @@ async function findLinearIssueByTitle(input: CreateBacklogIssueInput): Promise<C
 async function findLinkedLinearIssue(input: CreateBacklogIssueInput): Promise<CreatedLinearIssue | undefined> {
   const config = getLinearConfig(input);
   const reference = getLinearIssueReference(input);
-  const term = reference.id ?? reference.identifier;
 
-  if (!config.apiKey || !term) {
+  if (!config.apiKey || (!reference.id && !reference.identifier)) {
     return undefined;
   }
 
   const client = createLinearClient({ apiKey: config.apiKey });
+
+  if (reference.id) {
+    const data = await client.request<{
+      issue?: LinkedLinearIssueNode | null;
+    }>(
+      `
+        query FindLinkedIssueById($id: String!) {
+          issue(id: $id) {
+            id
+            identifier
+            title
+            description
+            priority
+            estimate
+            url
+            assignee {
+              name
+              displayName
+              email
+            }
+            cycle {
+              name
+            }
+            labels {
+              nodes {
+                name
+              }
+            }
+          }
+        }
+      `,
+      { id: reference.id }
+    );
+
+    if (data.issue) {
+      return toCreatedLinearIssue(data.issue);
+    }
+  }
+
+  if (!reference.identifier) {
+    return undefined;
+  }
+
   const data = await client.request<{
-    issue?: LinkedLinearIssueNode | null;
+    issues: { nodes: LinkedLinearIssueNode[] };
   }>(
     `
-      query FindLinkedIssue($term: String!) {
-        issue(id: $term) {
-          id
-          identifier
-          title
-          description
-          priority
-          estimate
-          url
-          assignee {
-            name
-            displayName
-            email
-          }
-          cycle {
-            name
-          }
-          labels {
-            nodes {
+      query FindLinkedIssueByIdentifier($identifier: String!) {
+        issues(first: 1, filter: { identifier: { eq: $identifier } }) {
+          nodes {
+            id
+            identifier
+            title
+            description
+            priority
+            estimate
+            url
+            assignee {
               name
+              displayName
+              email
+            }
+            cycle {
+              name
+            }
+            labels {
+              nodes {
+                name
+              }
             }
           }
         }
       }
     `,
-    { term }
+    { identifier: reference.identifier }
   );
 
-  return data.issue ? toCreatedLinearIssue(data.issue) : undefined;
+  return data.issues.nodes[0] ? toCreatedLinearIssue(data.issues.nodes[0]) : undefined;
 }
 
 function toCreatedLinearIssue(issue: LinkedLinearIssueNode): CreatedLinearIssue {
