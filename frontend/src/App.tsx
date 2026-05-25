@@ -957,6 +957,7 @@ export function App() {
           categories={categoryConfig}
           clients={clientConfig}
           columns={backlogConfig}
+          members={activeProduct.members}
           onColumnsChange={setBacklogConfig}
           onCategoriesChange={setCategoryConfig}
           onEntryMovedToColumn={(entry, columnTitle) => {
@@ -2848,6 +2849,7 @@ function BacklogPage({
   categories,
   clients,
   columns,
+  members,
   onColumnsChange,
   onCategoriesChange,
   onEntryMovedToColumn,
@@ -2859,6 +2861,7 @@ function BacklogPage({
   categories: CategoryConfig[];
   clients: ClientAccount[];
   columns: BacklogColumn[];
+  members: ProductMember[];
   onColumnsChange: (columns: BacklogColumn[]) => void;
   onCategoriesChange: (categories: CategoryConfig[]) => void;
   onEntryMovedToColumn: (entry: BacklogEntry, columnTitle: string) => void;
@@ -3247,6 +3250,7 @@ function BacklogPage({
                       <BacklogTabEntryCard
                         entry={entry}
                         categories={categories}
+                        members={members}
                         expanded={isEpic(entry) ? expandedEpics.has(entry.id) : false}
                         isDragging={draggedEntry?.columnIndex === columnIndex && draggedEntry.entryIndex === entryIndex}
                         key={isEpic(entry) ? entry.id : `item-${entry.order}`}
@@ -3283,7 +3287,7 @@ function BacklogPage({
         </div>
       </section>
 
-      {isCreateModalOpen && <CreateItemModal categories={categories} clients={clients} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateItem} sprints={sprints} />}
+      {isCreateModalOpen && <CreateItemModal categories={categories} clients={clients} members={members} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateItem} sprints={sprints} />}
       {isCreateEpicModalOpen && <CreateEpicModal categories={categories} onClose={() => setIsCreateEpicModalOpen(false)} onCreate={handleCreateEpic} />}
       {isBacklogSettingsOpen && (
         <BacklogSettingsModal
@@ -3540,6 +3544,7 @@ function BacklogTabEntryCard({
   entry,
   expanded,
   isDragging,
+  members,
   onDragEnd,
   onDragOver,
   onEpicItemDragStart,
@@ -3556,6 +3561,7 @@ function BacklogTabEntryCard({
   entry: BacklogEntry;
   expanded: boolean;
   isDragging: boolean;
+  members: ProductMember[];
   onDragEnd: () => void;
   onDragOver: (event: DragEvent<HTMLElement>) => void;
   onEpicItemDragStart: (event: DragEvent<HTMLElement>, itemIndex: number) => void;
@@ -3680,6 +3686,7 @@ function BacklogTabEntryCard({
       <CardMetaEditor
         description={entry.description ?? ""}
         estimate={entry.estimate ?? ""}
+        members={members}
         owner={entry.owner ?? ""}
         points={entry.storyPoints ?? 0}
         priority={entry.priority}
@@ -3701,7 +3708,7 @@ function BacklogTabEntryCard({
         <span>{entry.category}</span>
         {(entry.owner || entry.storyPoints) && (
           <span className="card-meta-pills">
-            {entry.owner && <span className="owner-pill">{entry.owner}</span>}
+            {entry.owner && <span className="owner-pill" title={entry.owner}>{getInitials(entry.owner)}</span>}
             {!!entry.storyPoints && (
               <span className="story-points">
                 <ListTodo size={15} />
@@ -4699,6 +4706,7 @@ function CreateItemModal({
   categories,
   clients,
   defaultSprint,
+  members,
   mode = "backlog",
   onClose,
   onCreate,
@@ -4708,6 +4716,7 @@ function CreateItemModal({
   categories: CategoryConfig[];
   clients: ClientAccount[];
   defaultSprint?: string;
+  members: ProductMember[];
   mode?: "backlog" | "board";
   onClose: () => void;
   onCreate: (input: CreateItemInput) => void;
@@ -4777,7 +4786,7 @@ function CreateItemModal({
               <span>Responsavel</span>
               <select value={itemOwner} onChange={(event) => setItemOwner(event.target.value)}>
                 <option value="">Sem responsavel</option>
-                {boardMembers.map((member) => <option value={member} key={member}>{member}</option>)}
+                {members.map((member) => <option value={member.name} key={member.id}>{member.name}</option>)}
               </select>
             </label>
             <label>
@@ -5270,6 +5279,7 @@ function BoardPage({
                   card={card}
                   isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
                   key={card.id}
+                  members={members}
                   onDragEnd={() => setDraggedCard(null)}
                   onDragOver={handleDragOver}
                   onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
@@ -5321,6 +5331,7 @@ function BoardPage({
           categories={categories}
           clients={clients}
           defaultSprint={selectedSprint?.name}
+          members={members}
           mode="board"
           onClose={() => setCreateTargetColumnIndex(null)}
           onCreate={handleCreateBoardCard}
@@ -6416,6 +6427,7 @@ function CardMetaEditor({
   description,
   estimate,
   linearUrl,
+  members,
   owner,
   points,
   priority,
@@ -6425,6 +6437,7 @@ function CardMetaEditor({
   description?: string;
   estimate?: string;
   linearUrl?: string;
+  members: ProductMember[];
   owner?: string;
   points?: number;
   priority?: Priority;
@@ -6447,7 +6460,7 @@ function CardMetaEditor({
         <span>Responsavel</span>
         <select value={owner ?? ""} onChange={(event) => onChange(event.target.value, points ?? 0, estimate ?? "", priority ?? "Media", description ?? "")} aria-label="Responsavel do card">
           <option value="">Sem responsavel</option>
-          {boardMembers.map((member) => <option value={member} key={member}>{member}</option>)}
+          {members.map((member) => <option value={member.name} key={member.id}>{member.name}</option>)}
         </select>
       </label>
       <label>
@@ -6506,6 +6519,7 @@ function CardMetaEditor({
 function BoardCardItem({
   card,
   isDragging,
+  members,
   onDragEnd,
   onDragOver,
   onDragStart,
@@ -6516,6 +6530,7 @@ function BoardCardItem({
 }: {
   card: BoardCard;
   isDragging: boolean;
+  members: ProductMember[];
   onDragEnd: () => void;
   onDragOver: (event: DragEvent<HTMLElement>) => void;
   onDragStart: (event: DragEvent<HTMLElement>) => void;
@@ -6568,6 +6583,7 @@ function BoardCardItem({
       <CardMetaEditor
         description={card.description ?? ""}
         estimate={card.estimate ?? ""}
+        members={members}
         owner={card.owner}
         points={card.points}
         priority={card.priority}
@@ -6584,7 +6600,7 @@ function BoardCardItem({
       <Badge tone={getPriorityTone(card.priority)}>{card.priority}</Badge>
       {(card.owner || card.points > 0) && (
         <footer>
-          {card.owner && <span className="owner-pill">{card.owner}</span>}
+          {card.owner && <span className="owner-pill" title={card.owner}>{getInitials(card.owner)}</span>}
           {card.points > 0 && (
             <span className="story-points">
               <ListTodo size={15} />
