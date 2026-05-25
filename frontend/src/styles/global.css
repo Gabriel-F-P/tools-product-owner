@@ -5707,6 +5707,38 @@ input[type="checkbox"] {
   background: #6e4dff;
 }
 
+:root[data-theme="dark"] .dual-scrollbar,
+:root[data-theme="dark"] .dual-scroll-content {
+  scrollbar-color: #93a4c6 #111827;
+}
+
+:root[data-theme="dark"] .dual-scrollbar::-webkit-scrollbar,
+:root[data-theme="dark"] .dual-scroll-content::-webkit-scrollbar,
+:root[data-theme="dark"] .kanban-board::-webkit-scrollbar {
+  height: 12px;
+}
+
+:root[data-theme="dark"] .dual-scrollbar::-webkit-scrollbar-thumb,
+:root[data-theme="dark"] .dual-scroll-content::-webkit-scrollbar-thumb,
+:root[data-theme="dark"] .kanban-board::-webkit-scrollbar-thumb {
+  border: 2px solid #111827;
+  border-radius: 999px;
+  background: #93a4c6;
+}
+
+:root[data-theme="dark"] .dual-scrollbar::-webkit-scrollbar-thumb:hover,
+:root[data-theme="dark"] .dual-scroll-content::-webkit-scrollbar-thumb:hover,
+:root[data-theme="dark"] .kanban-board::-webkit-scrollbar-thumb:hover {
+  background: #c7d2fe;
+}
+
+:root[data-theme="dark"] .dual-scrollbar::-webkit-scrollbar-track,
+:root[data-theme="dark"] .dual-scroll-content::-webkit-scrollbar-track,
+:root[data-theme="dark"] .kanban-board::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: #111827;
+}
+
 :root[data-theme="dark"] .column-description-tooltip {
   border-color: #2c3854;
   background: #121a2b;
