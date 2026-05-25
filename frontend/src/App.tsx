@@ -4991,15 +4991,21 @@ function BoardPage({
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false);
   const [createTargetColumnIndex, setCreateTargetColumnIndex] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [ownerFilter, setOwnerFilter] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ columnIndex: number; cardIndex: number; title: string } | null>(null);
   const [integrationNotice, setIntegrationNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
   const activeSprint = getActiveSprint(sprints, sprintStatuses);
   const [selectedSprintId, setSelectedSprintId] = useState(activeSprint?.id ?? sprints[0]?.id ?? "");
   const selectedSprint = sprints.find((sprint) => sprint.id === selectedSprintId) ?? activeSprint ?? sprints[0];
   const visibleColumns = mergeBoardColumnsWithSprintConnections(columns, sprintBacklogItems, selectedSprint?.name);
+  const filteredColumns = visibleColumns.map((column) => ({
+    ...column,
+    cards: column.cards
+      .map((card, cardIndex) => ({ card, cardIndex }))
+      .filter(({ card }) => !ownerFilter || card.owner === ownerFilter)
+  }));
   const productMemberInitials = members.map((member) => getInitials(member.name));
-  const totalItems = visibleColumns.reduce((total, column) => total + column.cards.length, 0);
+  const totalItems = filteredColumns.reduce((total, column) => total + column.cards.length, 0);
 
   useEffect(() => {
     const nextActiveSprint = getActiveSprint(sprints, sprintStatuses);
@@ -5074,45 +5080,6 @@ function BoardPage({
       });
 
     setDraggedCard(null);
-  }
-
-  function updateBoardCardMeta(
-    columnIndex: number,
-    cardIndex: number,
-    updates: Partial<Pick<BoardCard, "description" | "estimate" | "owner" | "points" | "priority">>
-  ) {
-    const currentCard = visibleColumns[columnIndex]?.cards[cardIndex];
-    const nextCard = currentCard
-      ? {
-          ...currentCard,
-          ...updates,
-          generalFields: getGeneralFieldValues(
-            currentCard.title,
-            updates.owner ?? currentCard.owner,
-            updates.points ?? currentCard.points
-          )
-        }
-      : null;
-
-    onColumnsChange(
-      visibleColumns.map((column, currentColumnIndex) =>
-        currentColumnIndex === columnIndex
-          ? {
-              ...column,
-              cards: column.cards.map((card, currentCardIndex) =>
-                currentCardIndex === cardIndex ? nextCard ?? card : card
-              )
-            }
-          : column
-      )
-    );
-
-    if (nextCard) {
-      void syncBoardIssueUpdate(nextCard, visibleColumns[columnIndex]?.title).catch((error) => {
-        const message = error instanceof Error ? error.message : "Integracao indisponivel.";
-        setIntegrationNotice({ tone: "error", message: `O responsavel ou estimativa mudou localmente, mas nao foi atualizado no Linear. ${message}` });
-      });
-    }
   }
 
   function deleteBoardCard() {
@@ -5231,11 +5198,13 @@ function BoardPage({
           </div>
         </div>
         <div className="board-actions">
-          <ViewModeToggle value={viewMode} onChange={setViewMode} />
-          <button className="secondary-button" type="button">
+          <label className="board-filter-control">
             <ListFilter size={18} />
-            Filtros
-          </button>
+            <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filtrar por responsavel">
+              <option value="">Todos responsaveis</option>
+              {members.map((member) => <option value={member.name} key={member.id}>{member.name}</option>)}
+            </select>
+          </label>
           <button className="square-action" type="button" onClick={() => setIsBoardSettingsOpen(true)} aria-label="Configurar board" title="Configurar board">
             <Settings size={18} />
           </button>
@@ -5255,12 +5224,11 @@ function BoardPage({
       )}
 
       <section
-        className={`kanban-board ${viewMode === "list" ? "list-view" : ""}`}
+        className="kanban-board"
         aria-label="Board da sprint"
-        style={{ "--board-column-width": `calc((100% - ${(Math.max(initialVisibleTabs, 1) - 1) * 8}px) / ${Math.max(initialVisibleTabs, 1)})` } as CSSProperties}
       >
-        {visibleColumns.map((column, columnIndex) => (
-          <article className={`kanban-column ${column.color}`} key={column.title} onDragOver={handleDragOver} onDrop={(event) => handleDrop(event, columnIndex, column.cards.length)}>
+        {filteredColumns.map((column, columnIndex) => (
+          <article className={`kanban-column ${column.color}`} key={column.title} onDragOver={handleDragOver} onDrop={(event) => handleDrop(event, columnIndex, visibleColumns[columnIndex]?.cards.length ?? column.cards.length)}>
             <header className="kanban-column-header">
               <span className={`column-icon ${column.color}`}>
                 {renderBoardIcon(column.icon, 15)}
@@ -5274,19 +5242,17 @@ function BoardPage({
             </header>
 
             <div className="kanban-card-list">
-              {column.cards.map((card, cardIndex) => (
+              {column.cards.map(({ card, cardIndex }) => (
                 <BoardCardItem
                   card={card}
                   isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
                   key={card.id}
-                  members={members}
                   onDragEnd={() => setDraggedCard(null)}
                   onDragOver={handleDragOver}
                   onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
                   onDrop={(event) => handleDrop(event, columnIndex, cardIndex)}
                   onOpenDetails={() => setSelectedTask(toBoardTaskDetail(card, column.title, columns))}
                   onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
-                  onUpdateMeta={(updates) => updateBoardCardMeta(columnIndex, cardIndex, updates)}
                 />
               ))}
             </div>
@@ -6519,25 +6485,21 @@ function CardMetaEditor({
 function BoardCardItem({
   card,
   isDragging,
-  members,
   onDragEnd,
   onDragOver,
   onDragStart,
   onDrop,
   onOpenDetails,
-  onRequestDelete,
-  onUpdateMeta
+  onRequestDelete
 }: {
   card: BoardCard;
   isDragging: boolean;
-  members: ProductMember[];
   onDragEnd: () => void;
   onDragOver: (event: DragEvent<HTMLElement>) => void;
   onDragStart: (event: DragEvent<HTMLElement>) => void;
   onDrop: (event: DragEvent<HTMLElement>) => void;
   onOpenDetails: () => void;
   onRequestDelete: () => void;
-  onUpdateMeta: (updates: Partial<Pick<BoardCard, "description" | "estimate" | "owner" | "points" | "priority">>) => void;
 }) {
   const issueDisplayId = getIssueDisplayId(card);
 
@@ -6560,7 +6522,7 @@ function BoardCardItem({
       }}
     >
       <header>
-        <span>{card.id}</span>
+        <span>ID</span>
         <div className="card-header-actions">
           {issueDisplayId && <small>Linear {issueDisplayId}</small>}
           {card.done && <CheckCircle2 size={16} />}
@@ -6579,36 +6541,28 @@ function BoardCardItem({
           </button>
         </div>
       </header>
+      <small className="kanban-card-id">{card.id}</small>
       <h3>{card.title}</h3>
-      <CardMetaEditor
-        description={card.description ?? ""}
-        estimate={card.estimate ?? ""}
-        members={members}
-        owner={card.owner}
-        points={card.points}
-        priority={card.priority}
-        onChange={(owner, points, estimate, priority, description) =>
-          onUpdateMeta({
-            description: description || undefined,
-            estimate: estimate || undefined,
-            owner,
-            points,
-            priority
-          })
-        }
-      />
-      <Badge tone={getPriorityTone(card.priority)}>{card.priority}</Badge>
-      {(card.owner || card.points > 0) && (
-        <footer>
-          {card.owner && <span className="owner-pill" title={card.owner}>{getInitials(card.owner)}</span>}
-          {card.points > 0 && (
-            <span className="story-points">
-              <ListTodo size={15} />
-              {card.points}
-            </span>
-          )}
-        </footer>
-      )}
+      <footer>
+        <span className={`board-card-pill priority-pill ${getPriorityTone(card.priority)}`}>
+          {card.priority === "Alta" || card.priority === "Urgente" ? <ArrowUp size={14} /> : card.priority === "Baixa" ? <ArrowDown size={14} /> : <span className="priority-dash" />}
+          {card.priority}
+        </span>
+        <span className="board-card-pill">
+          <ListTodo size={14} />
+          {card.points || "SP"}
+        </span>
+        <span className="board-card-pill">
+          <CalendarDays size={14} />
+          {card.estimate || "Sem estimativa"}
+        </span>
+        {card.owner && (
+          <span className="board-card-pill owner-card-pill" title={card.owner}>
+            <span className="owner-pill">{getInitials(card.owner)}</span>
+            {card.owner}
+          </span>
+        )}
+      </footer>
     </article>
   );
 }
