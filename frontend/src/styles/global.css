@@ -3200,6 +3200,54 @@ input[type="checkbox"] {
   font-weight: 780;
 }
 
+.daily-member-column-list {
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+}
+
+.daily-member-column {
+  display: grid;
+  gap: 10px;
+}
+
+.daily-member-column > strong {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 10px;
+  border-left: 4px solid #4254f5;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #172033;
+  font-size: 13px;
+}
+
+.daily-task-pill {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.daily-task-pill strong,
+.daily-task-pill small,
+.daily-task-pill em {
+  min-width: 0;
+}
+
+.daily-task-pill small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-task-pill em {
+  color: #657187;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+}
+
 .daily-task-list p {
   margin: 0;
   color: #657187;

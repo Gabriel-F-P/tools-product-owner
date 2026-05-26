@@ -171,6 +171,8 @@ interface DailyRecord {
   id: string;
   title: string;
   date: string;
+  sprintId: string;
+  sprintName: string;
   displayMode: "membro" | "tarefas";
   createdAt: string;
   cards: BoardCard[];
@@ -1081,8 +1083,10 @@ export function App() {
         <CeremoniesPage
           backlogColumns={backlogConfig}
           boardColumns={boardConfig}
+          sprintBacklogItems={sprintBacklogItems}
           retrospectives={retroConfig}
           sprints={sprintConfig}
+          sprintStatuses={sprintStatusConfig}
           onRetrospectivesChange={setRetroConfig}
           theme={theme}
           onToggleTheme={() => setTheme(toggleTheme)}
@@ -2398,16 +2402,20 @@ function RollbackChart() {
 function CeremoniesPage({
   backlogColumns,
   boardColumns,
+  sprintBacklogItems,
   retrospectives,
   sprints,
+  sprintStatuses,
   onRetrospectivesChange,
   theme,
   onToggleTheme
 }: {
   backlogColumns: BacklogColumn[];
   boardColumns: BoardColumn[];
+  sprintBacklogItems: BacklogItem[];
   retrospectives: Retrospective[];
   sprints: SprintPlan[];
+  sprintStatuses: SprintStatus[];
   onRetrospectivesChange: (retrospectives: Retrospective[]) => void;
   theme: Theme;
   onToggleTheme: () => void;
@@ -2424,7 +2432,7 @@ function CeremoniesPage({
           ))}
         </div>
         {ceremony === "Planning" && <PlanningCeremony backlogColumns={backlogColumns} sprints={sprints} />}
-        {ceremony === "Daily" && <DailyCeremony boardColumns={boardColumns} />}
+        {ceremony === "Daily" && <DailyCeremony boardColumns={boardColumns} sprintBacklogItems={sprintBacklogItems} sprints={sprints} sprintStatuses={sprintStatuses} />}
         {ceremony === "Review" && <ReviewCeremony boardColumns={boardColumns} sprints={sprints} />}
         {ceremony === "Retrospectiva" && <RetroCeremony retrospectives={retrospectives} onRetrospectivesChange={onRetrospectivesChange} />}
       </section>
@@ -2588,31 +2596,47 @@ function PlanningCeremony({ backlogColumns, sprints }: { backlogColumns: Backlog
   );
 }
 
-function DailyCeremony({ boardColumns }: { boardColumns: BoardColumn[] }) {
+function DailyCeremony({
+  boardColumns,
+  sprintBacklogItems,
+  sprints,
+  sprintStatuses
+}: {
+  boardColumns: BoardColumn[];
+  sprintBacklogItems: BacklogItem[];
+  sprints: SprintPlan[];
+  sprintStatuses: SprintStatus[];
+}) {
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>([]);
   const [selectedDailyId, setSelectedDailyId] = useState("");
   const [screenMode, setScreenMode] = useState<"list" | "create" | "detail">("list");
   const [isPresentationExpanded, setIsPresentationExpanded] = useState(false);
-  const [dailyDate, setDailyDate] = useState("2026-05-20");
+  const activeSprint = getActiveSprint(sprints, sprintStatuses);
+  const [selectedSprintId, setSelectedSprintId] = useState(activeSprint?.id ?? sprints[0]?.id ?? "");
+  const [dailyDate, setDailyDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [displayMode, setDisplayMode] = useState<"membro" | "tarefas">("membro");
   const [selectedDailyColumnIndex, setSelectedDailyColumnIndex] = useState(0);
   const [selectedDailyMemberIndex, setSelectedDailyMemberIndex] = useState(0);
-  const [dailyPeriod, setDailyPeriod] = useState<"yesterday" | "today">("yesterday");
-  const allBoardCards = boardColumns.flatMap((column) => column.cards);
+  const selectedSprint = sprints.find((sprint) => sprint.id === selectedSprintId) ?? activeSprint ?? sprints[0];
+  const sprintColumns = selectedSprint
+    ? mergeBoardColumnsWithSprintConnections(boardColumns, sprintBacklogItems, selectedSprint.name)
+    : boardColumns;
+  const allSprintCards = sprintColumns.flatMap((column) => column.cards);
   const selectedDaily = dailyRecords.find((daily) => daily.id === selectedDailyId);
   const activeDaily = screenMode === "detail" ? selectedDaily : undefined;
   const cards = activeDaily?.cards ?? [];
   const activeDailyColumn = activeDaily?.columns[selectedDailyColumnIndex] ?? activeDaily?.columns[0];
-  const activeDailyMember = boardMembers[selectedDailyMemberIndex] ?? boardMembers[0];
-  const activeMemberCards = cards.filter((card) => card.owner === activeDailyMember);
-  const dailyPeriodTitle = dailyPeriod === "yesterday" ? "Ontem - Movimentacoes" : "Hoje - Atividades";
+  const dailyMembers = getDailyMembers(cards);
+  const activeDailyMember = dailyMembers[selectedDailyMemberIndex] ?? dailyMembers[0] ?? "Sem responsavel";
+  const activeMemberColumns = activeDaily?.columns
+    .map((column) => ({
+      ...column,
+      cards: column.cards.filter((card) => getDailyCardOwner(card) === activeDailyMember)
+    }))
+    .filter((column) => column.cards.length > 0) ?? [];
   const visibleDailyCards = activeDaily?.displayMode === "tarefas"
-    ? dailyPeriod === "yesterday"
-      ? activeDaily.columns.flatMap((column) => column.cards).slice(0, 8)
-      : (activeDailyColumn?.cards ?? [])
-    : dailyPeriod === "yesterday"
-      ? activeMemberCards.slice(0, 8)
-      : activeMemberCards;
+    ? activeDailyColumn?.cards ?? []
+    : activeMemberColumns.flatMap((column) => column.cards);
 
   function createDaily() {
     setSelectedDailyId("");
@@ -2620,14 +2644,20 @@ function DailyCeremony({ boardColumns }: { boardColumns: BoardColumn[] }) {
   }
 
   function generateDaily() {
+    if (!selectedSprint) {
+      return;
+    }
+
     const daily: DailyRecord = {
       id: `daily-${Date.now()}`,
-      title: `Daily - ${dailyDate}`,
+      title: `Daily - ${selectedSprint.name}`,
       date: dailyDate,
+      sprintId: selectedSprint.id,
+      sprintName: selectedSprint.name,
       displayMode,
       createdAt: new Date().toLocaleDateString("pt-BR"),
-      cards: allBoardCards.map((card) => ({ ...card })),
-      columns: boardColumns.map((column) => ({
+      cards: allSprintCards.map((card) => ({ ...card })),
+      columns: sprintColumns.map((column) => ({
         title: column.title,
         color: column.color,
         cards: column.cards.map((card) => ({ ...card }))
@@ -2669,7 +2699,7 @@ function DailyCeremony({ boardColumns }: { boardColumns: BoardColumn[] }) {
                   <div>
                     <span>{daily.displayMode === "membro" ? "Membros" : "Tarefas"}</span>
                     <h3>{daily.title}</h3>
-                    <p>{daily.displayMode === "membro" ? "Modo membro" : "Modo tarefas"} - {daily.cards.length} cards - criada em {daily.createdAt}</p>
+                    <p>{daily.sprintName} - {daily.displayMode === "membro" ? "Modo responsavel" : "Modo abas"} - {daily.cards.length} cards - criada em {daily.createdAt}</p>
                   </div>
                   <strong>{daily.cards.length}</strong>
                   <button type="button" onClick={() => { setSelectedDailyId(daily.id); setScreenMode("detail"); }}>Acessar</button>
@@ -2685,7 +2715,7 @@ function DailyCeremony({ boardColumns }: { boardColumns: BoardColumn[] }) {
             </div>
           )}
         </section>
-        <aside className="ceremony-context-panel"><h3>Sobre a Cerimonia</h3><strong>Daily</strong><p>O historico guarda cada apresentacao gerada, com os cards da aba selecionada no momento da criacao.</p><hr /><strong>O que sera incluido</strong><ul><li>Data selecionada</li><li>Modo membro ou tarefas</li><li>Cards da aba do dia</li><li>Resumo por membro</li></ul></aside>
+        <aside className="ceremony-context-panel"><h3>Sobre a Cerimonia</h3><strong>Daily</strong><p>O historico guarda cada apresentacao gerada, com os cards da sprint no momento da criacao.</p><hr /><strong>O que sera incluido</strong><ul><li>Data selecionada</li><li>Sprint selecionada</li><li>Todas as abas da sprint</li><li>Resumo por responsavel</li></ul></aside>
         <CeremonySteps />
       </div>
     );
@@ -2693,48 +2723,80 @@ function DailyCeremony({ boardColumns }: { boardColumns: BoardColumn[] }) {
 
   return (
     <div className="ceremony-model-grid">
-      <aside className="ceremony-config-panel"><button className="secondary-button" type="button" onClick={() => setScreenMode("list")}><ChevronLeft size={16} />Voltar ao historico</button><h3>{screenMode === "detail" ? "Daily salva" : "Configurar Daily"}</h3><label><span>Selecione a data</span><input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} /></label><label><span>Modo da Daily</span><select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as "membro" | "tarefas")}><option value="membro">Modo membro</option><option value="tarefas">Modo tarefas</option></select></label><div className="planning-sprint-preview"><strong>{allBoardCards.length}</strong><span>cards distribuidos em {boardColumns.length} abas do board</span></div>{screenMode === "create" && <button className="primary-button" type="button" onClick={generateDaily}>Gerar apresentacao <Play size={15} /></button>}{screenMode === "detail" && activeDaily && <button className="danger-secondary-button" type="button" onClick={() => deleteDaily(activeDaily.id)}>Excluir daily</button>}<div className="ceremony-help-card"><strong>Sobre a Daily</strong><p>O modo tarefas cria uma pagina por aba do board. O modo membro agrupa os cards por responsavel.</p></div></aside>
+      <aside className="ceremony-config-panel"><button className="secondary-button" type="button" onClick={() => setScreenMode("list")}><ChevronLeft size={16} />Voltar ao historico</button><h3>{screenMode === "detail" ? "Daily salva" : "Configurar Daily"}</h3><label><span>Selecione a data</span><input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} /></label><label><span>Selecione a sprint</span><select value={selectedSprintId} onChange={(event) => setSelectedSprintId(event.target.value)}>{sprints.map((sprint) => <option value={sprint.id} key={sprint.id}>{sprint.name}</option>)}</select></label><label><span>Modo da Daily</span><select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as "membro" | "tarefas")}><option value="membro">Por responsavel</option><option value="tarefas">Por aba</option></select></label><div className="planning-sprint-preview"><strong>{allSprintCards.length}</strong><span>cards em {sprintColumns.length} abas da {selectedSprint?.name ?? "sprint"}</span></div>{screenMode === "create" && <button className="primary-button" type="button" onClick={generateDaily}>Gerar apresentacao <Play size={15} /></button>}{screenMode === "detail" && activeDaily && <button className="danger-secondary-button" type="button" onClick={() => deleteDaily(activeDaily.id)}>Excluir daily</button>}<div className="ceremony-help-card"><strong>Sobre a Daily</strong><p>O modo por responsavel cria uma pagina por pessoa e agrupa os cards pelas abas da sprint.</p></div></aside>
       <section className={`ceremony-presentation daily-presentation ${isPresentationExpanded ? "ceremony-presentation-expanded" : ""}`}>
         {activeDaily ? (
           <>
-            <header className="presentation-toolbar"><div><strong>Apresentacao - Daily ({activeDaily.displayMode === "membro" ? "Modo Membro" : "Modo Tarefas"})</strong><p>Data: {activeDaily.date}</p></div><div className="presentation-actions"><button type="button" onClick={() => setIsPresentationExpanded((current) => !current)}><LayoutGrid size={15} />{isPresentationExpanded ? "Sair da tela cheia" : "Tela cheia"}</button>{isPresentationExpanded && <button type="button" onClick={() => setIsPresentationExpanded(false)} aria-label="Fechar tela cheia"><X size={16} /></button>}</div></header>
+            <header className="presentation-toolbar"><div><strong>Apresentacao - Daily ({activeDaily.displayMode === "membro" ? "Por responsavel" : "Por aba"})</strong><p>{activeDaily.sprintName} - {activeDaily.date}</p></div><div className="presentation-actions"><button type="button" onClick={() => setIsPresentationExpanded((current) => !current)}><LayoutGrid size={15} />{isPresentationExpanded ? "Sair da tela cheia" : "Tela cheia"}</button>{isPresentationExpanded && <button type="button" onClick={() => setIsPresentationExpanded(false)} aria-label="Fechar tela cheia"><X size={16} /></button>}</div></header>
             <div className="daily-slide-layout ceremony-slide">
               <nav className="daily-slide-nav">
                 {activeDaily.displayMode === "membro"
-                  ? boardMembers.map((member, index) => <button className={index === selectedDailyMemberIndex ? "active" : ""} key={member} type="button" onClick={() => setSelectedDailyMemberIndex(index)}><span className="owner-pill">{member}</span><strong>Membro {member}</strong><small>{cards.filter((card) => card.owner === member).length} atividades</small></button>)
+                  ? dailyMembers.map((member, index) => <button className={index === selectedDailyMemberIndex ? "active" : ""} key={member} type="button" onClick={() => setSelectedDailyMemberIndex(index)}><span className="owner-pill">{getInitials(member)}</span><strong>{member}</strong><small>{cards.filter((card) => getDailyCardOwner(card) === member).length} cards</small></button>)
                   : activeDaily.columns.map((column, index) => <button className={index === selectedDailyColumnIndex ? "active" : ""} key={column.title} type="button" onClick={() => setSelectedDailyColumnIndex(index)}><span className="owner-pill" style={{ background: getBoardColorHex(column.color) }}>{index + 1}</span><strong>{column.title}</strong><small>{column.cards.length} atividades</small></button>)}
               </nav>
               <article className="daily-slide-main">
                 <div className="daily-slide-head">
-                  <span className="owner-pill" style={activeDaily.displayMode === "tarefas" ? { background: getBoardColorHex(activeDailyColumn?.color ?? "blue") } : undefined}>{activeDaily.displayMode === "membro" ? activeDailyMember : selectedDailyColumnIndex + 1}</span>
-                  <div><h2>{activeDaily.displayMode === "membro" ? `Membro ${activeDailyMember}` : activeDailyColumn?.title ?? "Aba"}</h2><p>{activeDaily.date}</p></div>
-                  <strong>{activeDaily.displayMode === "membro" ? selectedDailyMemberIndex + 1 : selectedDailyColumnIndex + 1} / {activeDaily.displayMode === "membro" ? boardMembers.length : activeDaily.columns.length}</strong>
-                </div>
-                <div className="daily-period-tabs">
-                  <button className={dailyPeriod === "yesterday" ? "active" : ""} type="button" onClick={() => setDailyPeriod("yesterday")}>Ontem</button>
-                  <button className={dailyPeriod === "today" ? "active" : ""} type="button" onClick={() => setDailyPeriod("today")}>Hoje</button>
+                  <span className="owner-pill" style={activeDaily.displayMode === "tarefas" ? { background: getBoardColorHex(activeDailyColumn?.color ?? "blue") } : undefined}>{activeDaily.displayMode === "membro" ? getInitials(activeDailyMember) : selectedDailyColumnIndex + 1}</span>
+                  <div><h2>{activeDaily.displayMode === "membro" ? activeDailyMember : activeDailyColumn?.title ?? "Aba"}</h2><p>{activeDaily.sprintName} - {activeDaily.date}</p></div>
+                  <strong>{activeDaily.displayMode === "membro" ? selectedDailyMemberIndex + 1 : selectedDailyColumnIndex + 1} / {activeDaily.displayMode === "membro" ? dailyMembers.length : activeDaily.columns.length}</strong>
                 </div>
                 <section className="daily-period-panel">
-                  <header><h3>{dailyPeriodTitle}</h3><span>{visibleDailyCards.length} cards</span></header>
-                  <div className="daily-task-list">
-                    {visibleDailyCards.length > 0 ? visibleDailyCards.map((card) => <span key={`${card.id}-${dailyPeriod}`}>{dailyPeriod === "yesterday" ? `${card.id} movimentado no board` : `${card.id} ${card.title}`}</span>) : <p>Nenhuma atividade para exibir neste periodo.</p>}
-                  </div>
+                  <header><h3>{activeDaily.displayMode === "membro" ? "Cards por aba" : "Cards da aba"}</h3><span>{visibleDailyCards.length} cards</span></header>
+                  {activeDaily.displayMode === "membro" ? (
+                    <div className="daily-member-column-list">
+                      {activeMemberColumns.length > 0 ? activeMemberColumns.map((column) => (
+                        <div className="daily-member-column" key={`${activeDaily.id}-${activeDailyMember}-${column.title}`}>
+                          <strong style={{ borderColor: getBoardColorHex(column.color) }}>{column.title}</strong>
+                          <div className="daily-task-list">
+                            {column.cards.map((card) => <DailyTaskPill card={card} key={`${column.title}-${card.id}`} />)}
+                          </div>
+                        </div>
+                      )) : <p>Nenhum card para este responsavel nesta sprint.</p>}
+                    </div>
+                  ) : (
+                    <div className="daily-task-list">
+                      {visibleDailyCards.length > 0 ? visibleDailyCards.map((card) => <DailyTaskPill card={card} key={`${activeDailyColumn?.title}-${card.id}`} />) : <p>Nenhuma atividade nesta aba da sprint.</p>}
+                    </div>
+                  )}
                 </section>
                 <footer className="daily-slide-footer">
                   <button type="button" onClick={() => activeDaily.displayMode === "membro" ? setSelectedDailyMemberIndex((index) => Math.max(index - 1, 0)) : setSelectedDailyColumnIndex((index) => Math.max(index - 1, 0))}><ChevronLeft size={16} />Anterior</button>
-                  <button type="button" onClick={() => activeDaily.displayMode === "membro" ? setSelectedDailyMemberIndex((index) => Math.min(index + 1, boardMembers.length - 1)) : setSelectedDailyColumnIndex((index) => Math.min(index + 1, activeDaily.columns.length - 1))}>Proximo<ChevronRight size={16} /></button>
+                  <button type="button" onClick={() => activeDaily.displayMode === "membro" ? setSelectedDailyMemberIndex((index) => Math.min(index + 1, dailyMembers.length - 1)) : setSelectedDailyColumnIndex((index) => Math.min(index + 1, activeDaily.columns.length - 1))}>Proximo<ChevronRight size={16} /></button>
                 </footer>
               </article>
             </div>
-            <div className="slide-dots">{Array.from({ length: activeDaily.displayMode === "tarefas" ? activeDaily.columns.length : boardMembers.length }).map((_, index) => <i className={index === (activeDaily.displayMode === "tarefas" ? selectedDailyColumnIndex : selectedDailyMemberIndex) ? "active" : ""} key={index} />)}</div>
+            <div className="slide-dots">{Array.from({ length: activeDaily.displayMode === "tarefas" ? activeDaily.columns.length : dailyMembers.length }).map((_, index) => <i className={index === (activeDaily.displayMode === "tarefas" ? selectedDailyColumnIndex : selectedDailyMemberIndex) ? "active" : ""} key={index} />)}</div>
           </>
         ) : (
           <div className="planning-generate-placeholder"><CalendarDays size={48} /><h2>Configure a daily e gere a apresentacao</h2><p>Os cards e agrupamentos da daily serao exibidos aqui somente depois de pressionar Gerar apresentacao.</p></div>
         )}
       </section>
-      <aside className="ceremony-context-panel"><h3>Sobre a Cerimonia</h3><strong>Daily</strong><p>Apresentacao por membro ou por tarefas com movimentos de ontem e foco do dia.</p><hr /><strong>O que sera incluido</strong><ul><li>Atividades movimentadas</li><li>Uma pagina por aba no modo tarefas</li><li>Resumo por membro</li></ul><div className="ceremony-tip">No modo tarefas, cada aba do board vira uma pagina da apresentacao.</div></aside>
+      <aside className="ceremony-context-panel"><h3>Sobre a Cerimonia</h3><strong>Daily</strong><p>Apresentacao por responsavel ou por aba com todos os cards da sprint selecionada.</p><hr /><strong>O que sera incluido</strong><ul><li>Cards de todas as abas da sprint</li><li>Uma pagina por responsavel</li><li>Resumo por aba</li></ul><div className="ceremony-tip">No modo por responsavel, cada pessoa vira uma pagina da apresentacao.</div></aside>
       <CeremonySteps />
     </div>
+  );
+}
+
+function getDailyCardOwner(card: BoardCard) {
+  return card.owner?.trim() || "Sem responsavel";
+}
+
+function getDailyMembers(cards: BoardCard[]) {
+  const members = Array.from(new Set(cards.map(getDailyCardOwner)));
+  return members.sort((firstMember, secondMember) => {
+    if (firstMember === "Sem responsavel") return 1;
+    if (secondMember === "Sem responsavel") return -1;
+    return firstMember.localeCompare(secondMember);
+  });
+}
+
+function DailyTaskPill({ card }: { card: BoardCard }) {
+  return (
+    <span className="daily-task-pill">
+      <strong>{card.id}</strong>
+      <small>{card.title}</small>
+      <em>{card.priority} - {card.points || 0} pts</em>
+    </span>
   );
 }
 
