@@ -5360,11 +5360,12 @@ function BoardPage({
   const selectedSprint = sprints.find((sprint) => sprint.id === selectedSprintId) ?? activeSprint ?? sprints[0];
   const visibleColumns = mergeBoardColumnsWithSprintConnections(columns, sprintBacklogItems, selectedSprint?.name);
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const matchesOwnerFilter = (card: BoardCard) => !ownerFilter || card.owner === ownerFilter || (card.assistants ?? []).includes(ownerFilter);
   const filteredColumns = visibleColumns.map((column) => ({
     ...column,
     cards: column.cards
       .map((card, cardIndex) => ({ card, cardIndex }))
-      .filter(({ card }) => (!ownerFilter || card.owner === ownerFilter) && (!normalizedSearchTerm || card.title.toLowerCase().includes(normalizedSearchTerm)))
+      .filter(({ card }) => matchesOwnerFilter(card) && (!normalizedSearchTerm || card.title.toLowerCase().includes(normalizedSearchTerm)))
   }));
   const productMemberInitials = members.map((member) => getInitials(member.name));
   const totalItems = filteredColumns.reduce((total, column) => total + column.cards.length, 0);
