@@ -6373,6 +6373,93 @@ input[type="checkbox"] {
   box-shadow: none;
 }
 
+:root[data-theme="dark"] .ceremonies-page .topbar h1,
+:root[data-theme="dark"] .ceremonies-page .topbar p {
+  color: #f4f7ff;
+}
+
+:root[data-theme="dark"] .ceremonies-page .topbar p {
+  color: #c6d0e6;
+}
+
+:root[data-theme="dark"] .segmented-control.ceremony-tabs {
+  border-color: #31405f;
+  background: linear-gradient(180deg, #121a2b, #0f1727);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.26);
+}
+
+:root[data-theme="dark"] .segmented-control.ceremony-tabs button {
+  color: #cbd5eb;
+}
+
+:root[data-theme="dark"] .segmented-control.ceremony-tabs button:hover {
+  border-color: #4b5d82;
+  background: #18233a;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .segmented-control.ceremony-tabs button.active {
+  border-color: #8c7aff;
+  background: linear-gradient(135deg, #6e4dff, #4c36e8);
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(86, 64, 220, 0.32);
+}
+
+:root[data-theme="dark"] .ceremony-config-panel select,
+:root[data-theme="dark"] .ceremony-config-panel input,
+:root[data-theme="dark"] .ceremony-side-panel select,
+:root[data-theme="dark"] .ceremony-side-panel input,
+:root[data-theme="dark"] .presentation-toolbar button,
+:root[data-theme="dark"] .planning-history-item button:not(.danger-icon-button),
+:root[data-theme="dark"] .daily-slide-footer button {
+  border-color: #3a4969;
+  background: #18233a;
+  color: #edf2ff;
+}
+
+:root[data-theme="dark"] .ceremony-config-panel select:focus,
+:root[data-theme="dark"] .ceremony-config-panel input:focus,
+:root[data-theme="dark"] .ceremony-side-panel select:focus,
+:root[data-theme="dark"] .ceremony-side-panel input:focus {
+  border-color: #8c7aff;
+  outline: 3px solid rgba(140, 122, 255, 0.18);
+}
+
+:root[data-theme="dark"] .presentation-toolbar button:hover,
+:root[data-theme="dark"] .planning-history-item button:not(.danger-icon-button):hover,
+:root[data-theme="dark"] .daily-slide-footer button:hover,
+:root[data-theme="dark"] .ceremony-config-panel .secondary-button:hover {
+  border-color: #607297;
+  background: #20304d;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .ceremonies-page .primary-button {
+  color: #ffffff;
+  background: linear-gradient(135deg, #7b61ff, #5b43f0);
+  box-shadow: 0 16px 28px rgba(74, 55, 205, 0.34);
+}
+
+:root[data-theme="dark"] .ceremony-config-panel .secondary-button {
+  border-color: #3a4969;
+  background: #141f34;
+  color: #edf2ff;
+}
+
+:root[data-theme="dark"] .danger-secondary-button,
+:root[data-theme="dark"] .danger-icon-button {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.32);
+  color: #fecaca;
+}
+
+:root[data-theme="dark"] .danger-secondary-button:hover,
+:root[data-theme="dark"] .danger-icon-button:hover {
+  border-color: rgba(248, 113, 113, 0.75);
+  background: rgba(153, 27, 27, 0.46);
+  color: #ffffff;
+}
+
 :root[data-theme="dark"] .ceremony-presentation-expanded {
   background: #0f1727;
   box-shadow: 0 0 0 100vmax rgba(3, 6, 14, 0.74), 0 28px 70px rgba(0, 0, 0, 0.5);

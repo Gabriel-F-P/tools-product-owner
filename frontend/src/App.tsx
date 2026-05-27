@@ -75,7 +75,9 @@ type WorkspaceStateSnapshot = Partial<{
   boardConfig: BoardColumn[];
   categoryConfig: CategoryConfig[];
   clientConfig: ClientAccount[];
+  dailyConfig: DailyRecord[];
   initialVisibleTabs: number;
+  planningConfig: PlanningRecord[];
   products: ProductAccess[];
   retroConfig: Retrospective[];
   sprintConfig: SprintPlan[];
@@ -761,6 +763,8 @@ export function App() {
   const [backlogConfig, setBacklogConfig] = useState<BacklogColumn[]>(() => backlogColumns.map((column) => ({ ...column, fields: [...column.fields], entries: [], connections: [...(column.connections ?? [])] })));
   const [categoryConfig, setCategoryConfig] = useState<CategoryConfig[]>(() => defaultBacklogCategories.map((category) => ({ ...category })));
   const [clientConfig, setClientConfig] = useState<ClientAccount[]>([]);
+  const [dailyConfig, setDailyConfig] = useState<DailyRecord[]>([]);
+  const [planningConfig, setPlanningConfig] = useState<PlanningRecord[]>([]);
   const [retroConfig, setRetroConfig] = useState<Retrospective[]>([]);
   const [sprintConfig, setSprintConfig] = useState<SprintPlan[]>(() => sprintPlans.map((sprint) => ({ ...sprint })));
   const [sprintStatusConfig, setSprintStatusConfig] = useState<SprintStatus[]>(() => sprintStatuses.map((status) => ({ ...status })));
@@ -788,7 +792,9 @@ export function App() {
     if (snapshot.boardConfig) setBoardConfig(snapshot.boardConfig);
     if (snapshot.categoryConfig) setCategoryConfig(snapshot.categoryConfig);
     if (snapshot.clientConfig) setClientConfig(snapshot.clientConfig);
+    if (snapshot.dailyConfig) setDailyConfig(snapshot.dailyConfig);
     if (typeof snapshot.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
+    if (snapshot.planningConfig) setPlanningConfig(snapshot.planningConfig);
     if (snapshot.products) setProducts(snapshot.products);
     if (snapshot.activeProductId) setActiveProductId(snapshot.activeProductId);
     if (snapshot.retroConfig) setRetroConfig(snapshot.retroConfig);
@@ -857,7 +863,9 @@ export function App() {
         boardConfig,
         categoryConfig,
         clientConfig,
+        dailyConfig,
         initialVisibleTabs,
+        planningConfig,
         products,
         retroConfig,
         sprintConfig,
@@ -879,7 +887,7 @@ export function App() {
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
-  }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, products, retroConfig, sprintConfig, sprintStatusConfig]);
+  }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, dailyConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, planningConfig, products, retroConfig, sprintConfig, sprintStatusConfig]);
 
   useEffect(() => {
     if (!isAuthenticated || !isWorkspaceStateLoaded) {
@@ -1085,10 +1093,14 @@ export function App() {
         <CeremoniesPage
           backlogColumns={backlogConfig}
           boardColumns={boardConfig}
+          dailyRecords={dailyConfig}
+          planningRecords={planningConfig}
           sprintBacklogItems={sprintBacklogItems}
           retrospectives={retroConfig}
           sprints={sprintConfig}
           sprintStatuses={sprintStatusConfig}
+          onDailyRecordsChange={setDailyConfig}
+          onPlanningRecordsChange={setPlanningConfig}
           onRetrospectivesChange={setRetroConfig}
           theme={theme}
           onToggleTheme={() => setTheme(toggleTheme)}
@@ -2431,20 +2443,28 @@ function RollbackChart() {
 function CeremoniesPage({
   backlogColumns,
   boardColumns,
+  dailyRecords,
+  planningRecords,
   sprintBacklogItems,
   retrospectives,
   sprints,
   sprintStatuses,
+  onDailyRecordsChange,
+  onPlanningRecordsChange,
   onRetrospectivesChange,
   theme,
   onToggleTheme
 }: {
   backlogColumns: BacklogColumn[];
   boardColumns: BoardColumn[];
+  dailyRecords: DailyRecord[];
+  planningRecords: PlanningRecord[];
   sprintBacklogItems: BacklogItem[];
   retrospectives: Retrospective[];
   sprints: SprintPlan[];
   sprintStatuses: SprintStatus[];
+  onDailyRecordsChange: (dailyRecords: DailyRecord[]) => void;
+  onPlanningRecordsChange: (planningRecords: PlanningRecord[]) => void;
   onRetrospectivesChange: (retrospectives: Retrospective[]) => void;
   theme: Theme;
   onToggleTheme: () => void;
@@ -2460,8 +2480,8 @@ function CeremoniesPage({
             <button className={ceremony === item ? "active" : ""} type="button" key={item} onClick={() => setCeremony(item as typeof ceremony)}>{item}</button>
           ))}
         </div>
-        {ceremony === "Planning" && <PlanningCeremony backlogColumns={backlogColumns} sprints={sprints} />}
-        {ceremony === "Daily" && <DailyCeremony boardColumns={boardColumns} sprintBacklogItems={sprintBacklogItems} sprints={sprints} sprintStatuses={sprintStatuses} />}
+        {ceremony === "Planning" && <PlanningCeremony backlogColumns={backlogColumns} planningRecords={planningRecords} onPlanningRecordsChange={onPlanningRecordsChange} sprints={sprints} />}
+        {ceremony === "Daily" && <DailyCeremony boardColumns={boardColumns} dailyRecords={dailyRecords} onDailyRecordsChange={onDailyRecordsChange} sprintBacklogItems={sprintBacklogItems} sprints={sprints} sprintStatuses={sprintStatuses} />}
         {ceremony === "Review" && <ReviewCeremony boardColumns={boardColumns} sprints={sprints} />}
         {ceremony === "Retrospectiva" && <RetroCeremony retrospectives={retrospectives} onRetrospectivesChange={onRetrospectivesChange} />}
       </section>
@@ -2469,8 +2489,17 @@ function CeremoniesPage({
   );
 }
 
-function PlanningCeremony({ backlogColumns, sprints }: { backlogColumns: BacklogColumn[]; sprints: SprintPlan[] }) {
-  const [planningRecords, setPlanningRecords] = useState<PlanningRecord[]>([]);
+function PlanningCeremony({
+  backlogColumns,
+  planningRecords,
+  onPlanningRecordsChange,
+  sprints
+}: {
+  backlogColumns: BacklogColumn[];
+  planningRecords: PlanningRecord[];
+  onPlanningRecordsChange: (planningRecords: PlanningRecord[]) => void;
+  sprints: SprintPlan[];
+}) {
   const [selectedPlanningId, setSelectedPlanningId] = useState("");
   const [mode, setMode] = useState<"list" | "create" | "detail">("list");
   const [isPresentationExpanded, setIsPresentationExpanded] = useState(false);
@@ -2506,7 +2535,7 @@ function PlanningCeremony({ backlogColumns, sprints }: { backlogColumns: Backlog
       items: sprintItems.map((item) => ({ ...item }))
     };
 
-    setPlanningRecords((currentRecords) => [planning, ...currentRecords]);
+    onPlanningRecordsChange([planning, ...planningRecords]);
     setSelectedPlanningId(planning.id);
     setMode("detail");
   }
@@ -2516,7 +2545,7 @@ function PlanningCeremony({ backlogColumns, sprints }: { backlogColumns: Backlog
       return;
     }
 
-    setPlanningRecords((currentRecords) => currentRecords.filter((planning) => planning.id !== planningId));
+    onPlanningRecordsChange(planningRecords.filter((planning) => planning.id !== planningId));
     if (selectedPlanningId === planningId) {
       setSelectedPlanningId("");
       setMode("list");
@@ -2627,16 +2656,19 @@ function PlanningCeremony({ backlogColumns, sprints }: { backlogColumns: Backlog
 
 function DailyCeremony({
   boardColumns,
+  dailyRecords,
+  onDailyRecordsChange,
   sprintBacklogItems,
   sprints,
   sprintStatuses
 }: {
   boardColumns: BoardColumn[];
+  dailyRecords: DailyRecord[];
+  onDailyRecordsChange: (dailyRecords: DailyRecord[]) => void;
   sprintBacklogItems: BacklogItem[];
   sprints: SprintPlan[];
   sprintStatuses: SprintStatus[];
 }) {
-  const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>([]);
   const [selectedDailyId, setSelectedDailyId] = useState("");
   const [screenMode, setScreenMode] = useState<"list" | "create" | "detail">("list");
   const [isPresentationExpanded, setIsPresentationExpanded] = useState(false);
@@ -2699,7 +2731,7 @@ function DailyCeremony({
       }))
     };
 
-    setDailyRecords((currentRecords) => [daily, ...currentRecords]);
+    onDailyRecordsChange([daily, ...dailyRecords]);
     setSelectedDailyId(daily.id);
     setScreenMode("detail");
   }
@@ -2709,7 +2741,7 @@ function DailyCeremony({
       return;
     }
 
-    setDailyRecords((currentRecords) => currentRecords.filter((daily) => daily.id !== dailyId));
+    onDailyRecordsChange(dailyRecords.filter((daily) => daily.id !== dailyId));
     if (selectedDailyId === dailyId) {
       setSelectedDailyId("");
       setScreenMode("list");
