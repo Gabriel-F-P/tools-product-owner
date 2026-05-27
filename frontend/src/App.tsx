@@ -1655,21 +1655,36 @@ function formatMovementDate() {
 }
 
 function Sidebar({ activePage, onNavigate, permission, productName }: { activePage: Page; onNavigate: (page: Page) => void; permission: UserPermission; productName: string }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
-    <aside className="sidebar" aria-label="Menu lateral">
-      <a className="brand" href="/" aria-label="Toolz.me" onClick={(event) => event.preventDefault()}>
-        <span className="brand-mark" />
-        <span>
-          Toolz.me
-          <small>{productName} - {permission}</small>
-        </span>
-      </a>
+    <aside className={`sidebar ${isCollapsed ? "collapsed" : ""}`} aria-label="Menu lateral">
+      <div className="sidebar-header">
+        <a className="brand" href="/" aria-label="Toolz.me" onClick={(event) => event.preventDefault()}>
+          <span className="brand-mark" />
+          <span className="brand-copy">
+            Toolz.me
+            <small>{productName} - {permission}</small>
+          </span>
+        </a>
+        <button
+          aria-label={isCollapsed ? "Expandir menu lateral" : "Recuar menu lateral"}
+          className="sidebar-toggle"
+          onClick={() => setIsCollapsed((current) => !current)}
+          title={isCollapsed ? "Expandir menu" : "Recuar menu"}
+          type="button"
+        >
+          {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </button>
+      </div>
 
       <nav className="sidebar-nav">
         {menuItems.map((item) => (
           <button
             className={`nav-item ${activePage === item.id ? "active" : ""}`}
             key={item.id}
+            aria-label={item.label}
+            title={isCollapsed ? item.label : undefined}
             type="button"
             onClick={() => onNavigate(item.id)}
           >
