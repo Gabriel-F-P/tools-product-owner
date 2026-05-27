@@ -3980,7 +3980,7 @@ input[type="checkbox"] {
   top: calc(100% + 6px);
   left: 0;
   display: grid;
-  width: min(280px, 100%);
+  width: 100%;
   max-height: 220px;
   overflow-y: auto;
   padding: 8px;
@@ -3992,14 +3992,33 @@ input[type="checkbox"] {
 
 .assistant-picker details label {
   display: flex;
-  min-height: 30px;
+  min-height: 38px;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  color: #1d2940;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.25;
+  cursor: pointer;
 }
 
-.assistant-picker input {
-  width: 16px;
-  height: 16px;
+.assistant-picker details label:hover {
+  background: #f4f6fb;
+}
+
+.assistant-picker input[type="checkbox"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #b9c4d6;
+  border-radius: 4px;
+  cursor: pointer;
+  accent-color: #6e4dff;
 }
 
 .segmented-control {
@@ -5891,6 +5910,19 @@ input[type="checkbox"] {
   border-color: #2c3854;
   background: #121a2b;
   color: #e8eefb;
+}
+
+:root[data-theme="dark"] .assistant-picker details label {
+  color: #e8eefb;
+}
+
+:root[data-theme="dark"] .assistant-picker details label:hover {
+  background: #1a2540;
+}
+
+:root[data-theme="dark"] .assistant-picker input[type="checkbox"] {
+  border-color: #52617f;
+  background: #0f1727;
 }
 
 :root[data-theme="dark"] .view-mode-toggle button {
