@@ -471,6 +471,7 @@ interface BoardCard {
   title: string;
   priority: Priority;
   owner: string;
+  assistants?: string[];
   points: number;
   sprint?: string;
   category?: string;
@@ -1109,6 +1110,16 @@ function getInitials(name?: string) {
   return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase() || "GF";
 }
 
+function getMemberInitials(name?: string) {
+  const trimmedName = name?.trim() ?? "";
+
+  if (!trimmedName) {
+    return "--";
+  }
+
+  return /^[A-Z]{1,3}$/.test(trimmedName) ? trimmedName : getInitials(trimmedName);
+}
+
 function LoginPage({ onLogin }: { onLogin: (email: string) => void }) {
   const [mode, setMode] = useState<"login" | "recover">("login");
   const [email, setEmail] = useState("gabriel.fonseca@toolzz.me");
@@ -1402,6 +1413,7 @@ function boardCardToSprintItem(card: BoardCard): BacklogItem {
     linearIssueId: card.linearIssueId,
     linearUrl: card.linearUrl,
     owner: card.owner || undefined,
+    assistants: card.assistants,
     storyPoints: card.points || undefined
   };
 }
@@ -1517,6 +1529,7 @@ function boardCardFromBacklogItem(item: BacklogItem): BoardCard {
     title: item.name,
     priority: item.priority,
     owner: item.owner ?? "",
+    assistants: item.assistants,
     points: item.storyPoints ?? 0,
     sprint: item.sprint,
     category: item.category,
@@ -2631,12 +2644,18 @@ function DailyCeremony({
   const activeMemberColumns = activeDaily?.columns
     .map((column) => ({
       ...column,
-      cards: column.cards.filter((card) => getDailyCardOwner(card) === activeDailyMember)
+      cards: column.cards.filter((card) => isDailyCardForMember(card, activeDailyMember))
     }))
     .filter((column) => column.cards.length > 0) ?? [];
   const visibleDailyCards = activeDaily?.displayMode === "tarefas"
     ? activeDailyColumn?.cards ?? []
     : activeMemberColumns.flatMap((column) => column.cards);
+
+  useEffect(() => {
+    if (selectedDailyMemberIndex >= dailyMembers.length) {
+      setSelectedDailyMemberIndex(0);
+    }
+  }, [dailyMembers.length, selectedDailyMemberIndex]);
 
   function createDaily() {
     setSelectedDailyId("");
@@ -2731,12 +2750,12 @@ function DailyCeremony({
             <div className="daily-slide-layout ceremony-slide">
               <nav className="daily-slide-nav">
                 {activeDaily.displayMode === "membro"
-                  ? dailyMembers.map((member, index) => <button className={index === selectedDailyMemberIndex ? "active" : ""} key={member} type="button" onClick={() => setSelectedDailyMemberIndex(index)}><span className="owner-pill">{getInitials(member)}</span><strong>{member}</strong><small>{cards.filter((card) => getDailyCardOwner(card) === member).length} cards</small></button>)
+                  ? dailyMembers.map((member, index) => <button className={index === selectedDailyMemberIndex ? "active" : ""} key={member} type="button" onClick={() => setSelectedDailyMemberIndex(index)}><span className="owner-pill">{getMemberInitials(member)}</span><strong>{member}</strong><small>{cards.filter((card) => isDailyCardForMember(card, member)).length} atividades</small></button>)
                   : activeDaily.columns.map((column, index) => <button className={index === selectedDailyColumnIndex ? "active" : ""} key={column.title} type="button" onClick={() => setSelectedDailyColumnIndex(index)}><span className="owner-pill" style={{ background: getBoardColorHex(column.color) }}>{index + 1}</span><strong>{column.title}</strong><small>{column.cards.length} atividades</small></button>)}
               </nav>
               <article className="daily-slide-main">
                 <div className="daily-slide-head">
-                  <span className="owner-pill" style={activeDaily.displayMode === "tarefas" ? { background: getBoardColorHex(activeDailyColumn?.color ?? "blue") } : undefined}>{activeDaily.displayMode === "membro" ? getInitials(activeDailyMember) : selectedDailyColumnIndex + 1}</span>
+                  <span className="owner-pill" style={activeDaily.displayMode === "tarefas" ? { background: getBoardColorHex(activeDailyColumn?.color ?? "blue") } : undefined}>{activeDaily.displayMode === "membro" ? getMemberInitials(activeDailyMember) : selectedDailyColumnIndex + 1}</span>
                   <div><h2>{activeDaily.displayMode === "membro" ? activeDailyMember : activeDailyColumn?.title ?? "Aba"}</h2><p>{activeDaily.sprintName} - {activeDaily.date}</p></div>
                   <strong>{activeDaily.displayMode === "membro" ? selectedDailyMemberIndex + 1 : selectedDailyColumnIndex + 1} / {activeDaily.displayMode === "membro" ? dailyMembers.length : activeDaily.columns.length}</strong>
                 </div>
@@ -2777,12 +2796,23 @@ function DailyCeremony({
   );
 }
 
-function getDailyCardOwner(card: BoardCard) {
-  return card.owner?.trim() || "Sem responsavel";
+function getDailyCardParticipants(card: BoardCard) {
+  return [card.owner, ...(card.assistants ?? [])]
+    .map((member) => member?.trim())
+    .filter((member): member is string => Boolean(member));
+}
+
+function isDailyCardForMember(card: BoardCard, member: string) {
+  return getDailyCardParticipants(card).includes(member);
 }
 
 function getDailyMembers(cards: BoardCard[]) {
-  const members = Array.from(new Set(cards.map(getDailyCardOwner)));
+  const members = Array.from(new Set(cards.flatMap(getDailyCardParticipants)));
+
+  if (members.length === 0) {
+    return ["Sem responsavel"];
+  }
+
   return members.sort((firstMember, secondMember) => {
     if (firstMember === "Sem responsavel") return 1;
     if (secondMember === "Sem responsavel") return -1;
@@ -3921,7 +3951,7 @@ function BacklogTabEntryCard({
       }}
     >
       <header>
-        <span className="owner-pill card-owner-avatar" title={entry.owner || "Sem responsavel"}>{entry.owner ? getInitials(entry.owner) : "--"}</span>
+        <span className="owner-pill card-owner-avatar" title={entry.owner || "Sem responsavel"}>{getMemberInitials(entry.owner)}</span>
         <span className={`board-card-pill priority-pill ${getPriorityTone(entry.priority)}`}>
           {entry.priority === "Alta" || entry.priority === "Urgente" ? <ArrowUp size={13} /> : entry.priority === "Baixa" ? <ArrowDown size={13} /> : <span className="priority-dash" />}
           {entry.priority}
@@ -4414,7 +4444,7 @@ function BacklogCalendarView({
                   style={{ "--category-color": getBoardColorHex(getCategoryConfig(item.category, categories)?.color ?? "blue") } as CSSProperties}
                 >
                   <header>
-                    <span className="owner-pill card-owner-avatar" title={item.owner || "Sem responsavel"}>{item.owner ? getInitials(item.owner) : "--"}</span>
+                    <span className="owner-pill card-owner-avatar" title={item.owner || "Sem responsavel"}>{getMemberInitials(item.owner)}</span>
                     <span className={`board-card-pill priority-pill ${getPriorityTone(item.priority)}`}>
                       {item.priority === "Alta" || item.priority === "Urgente" ? <ArrowUp size={13} /> : item.priority === "Baixa" ? <ArrowDown size={13} /> : <span className="priority-dash" />}
                       {item.priority}
@@ -4980,6 +5010,7 @@ function CreateItemModal({
   const [itemCategory, setItemCategory] = useState(categories[0]?.name ?? "Melhoria");
   const [itemPriority, setItemPriority] = useState<Priority>("Media");
   const [itemOwner, setItemOwner] = useState("");
+  const [itemAssistants, setItemAssistants] = useState<string[]>([]);
   const [itemStoryPoints, setItemStoryPoints] = useState("");
   const [itemClient, setItemClient] = useState("");
   const [itemLinearUrl, setItemLinearUrl] = useState("");
@@ -5005,12 +5036,21 @@ function CreateItemModal({
       priority: itemPriority,
       description: itemDescription.trim() || undefined,
       client: itemClient || undefined,
+      assistants: itemAssistants.length > 0 ? itemAssistants : undefined,
       linearIdentifier: trimmedLinearUrl ? extractLinearIdentifier(trimmedLinearUrl) || undefined : undefined,
       linearUrl: trimmedLinearUrl || undefined,
       owner: itemOwner || undefined,
       storyPoints: itemStoryPoints ? Number(itemStoryPoints) : undefined
       }
     });
+  }
+
+  function toggleAssistant(memberName: string) {
+    setItemAssistants((currentAssistants) =>
+      currentAssistants.includes(memberName)
+        ? currentAssistants.filter((assistant) => assistant !== memberName)
+        : [...currentAssistants, memberName]
+    );
   }
 
   return (
@@ -5047,6 +5087,24 @@ function CreateItemModal({
                 {linearEstimateOptions.map((option) => <option key={option} value={option}>{option} {option === 1 ? "ponto" : "pontos"}</option>)}
               </select>
             </label>
+          </div>
+          <div className="assistant-picker">
+            <span>Assistentes</span>
+            <details>
+              <summary>{itemAssistants.length > 0 ? `${itemAssistants.length} selecionado${itemAssistants.length > 1 ? "s" : ""}` : "Selecionar assistentes"}</summary>
+              <div>
+                {members.map((member) => (
+                  <label key={member.id}>
+                    <input
+                      checked={itemAssistants.includes(member.name)}
+                      type="checkbox"
+                      onChange={() => toggleAssistant(member.name)}
+                    />
+                    {member.name}
+                  </label>
+                ))}
+              </div>
+            </details>
           </div>
           <label>
             <span>Descricao</span>
@@ -5377,6 +5435,7 @@ function BoardPage({
       title: item.name,
       priority: item.priority,
       owner: item.owner ?? "",
+      assistants: item.assistants,
       points: item.storyPoints ?? 0,
       sprint: item.sprint,
       category: item.category,
@@ -6851,7 +6910,7 @@ function BoardCardItem({
       }}
     >
       <header>
-        <span className="owner-pill card-owner-avatar" title={card.owner || "Sem responsavel"}>{card.owner ? getInitials(card.owner) : "--"}</span>
+        <span className="owner-pill card-owner-avatar" title={card.owner || "Sem responsavel"}>{getMemberInitials(card.owner)}</span>
         <span className={`board-card-pill priority-pill ${getPriorityTone(card.priority)}`}>
           {card.priority === "Alta" || card.priority === "Urgente" ? <ArrowUp size={13} /> : card.priority === "Baixa" ? <ArrowDown size={13} /> : <span className="priority-dash" />}
           {card.priority}

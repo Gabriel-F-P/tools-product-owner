@@ -9,6 +9,7 @@ export interface BacklogItem {
   createdAt: string;
   description?: string;
   owner?: string;
+  assistants?: string[];
   storyPoints?: number;
   estimate?: string;
   client?: string;
