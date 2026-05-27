@@ -5912,6 +5912,52 @@ input[type="checkbox"] {
   color: #e8eefb;
 }
 
+:root[data-theme="dark"] select {
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] select option,
+:root[data-theme="dark"] select optgroup {
+  background: #121a2b;
+  color: #e8eefb;
+}
+
+:root[data-theme="dark"] select option:checked {
+  background: #6e4dff;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] select option:disabled {
+  color: #7d89a3;
+}
+
+:root[data-theme="dark"] .board-filter-control select,
+:root[data-theme="dark"] .board-sprint-select select,
+:root[data-theme="dark"] .filters-row select,
+:root[data-theme="dark"] .create-item-panel label > select,
+:root[data-theme="dark"] .task-edit-field select,
+:root[data-theme="dark"] .card-meta-editor select,
+:root[data-theme="dark"] .epic-item-row select,
+:root[data-theme="dark"] .client-task-form select,
+:root[data-theme="dark"] .execution-period-filters select {
+  color-scheme: dark;
+  background-color: #121a2b;
+  color: #e8eefb;
+}
+
+:root[data-theme="dark"] .board-filter-control:focus-within,
+:root[data-theme="dark"] .board-sprint-select select:focus,
+:root[data-theme="dark"] .filters-row select:focus,
+:root[data-theme="dark"] .create-item-panel label > select:focus,
+:root[data-theme="dark"] .task-edit-field select:focus,
+:root[data-theme="dark"] .card-meta-editor select:focus,
+:root[data-theme="dark"] .epic-item-row select:focus,
+:root[data-theme="dark"] .client-task-form select:focus,
+:root[data-theme="dark"] .execution-period-filters select:focus {
+  border-color: #536384;
+  outline: 3px solid rgba(140, 122, 255, 0.16);
+}
+
 :root[data-theme="dark"] .assistant-picker details label {
   color: #e8eefb;
 }
