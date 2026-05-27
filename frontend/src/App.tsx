@@ -17,6 +17,7 @@ import {
   Code2,
   Columns3,
   ClipboardList,
+  Copy,
   MessageCircle,
   ExternalLink,
   FileSpreadsheet,
@@ -67,8 +68,24 @@ type LinearCreateAction = "none" | "link" | "create";
 type BoardTabColor = "blue" | "purple" | "orange" | "red" | "green" | "pink" | "cyan" | "teal" | "indigo" | "slate";
 type BoardTabIcon = "columns" | "dot" | "lock" | "list" | "rocket" | "shield";
 type BoardFieldType = "Texto curto" | "Texto longo" | "Numero" | "Data" | "Lista" | "Sim/Nao" | "Pessoa";
+type BoardExportFieldId = "title" | "description" | "owner" | "assistants" | "priority" | "points" | "estimate" | "sprint" | "category" | "client" | "linear" | "createdAt";
 const linearEstimateOptions = [1, 2, 3, 5, 8] as const;
 const priorityOptions: Priority[] = ["Sem prioridade", "Urgente", "Alta", "Media", "Baixa"];
+const boardExportFieldOptions = [
+  { id: "title", label: "Titulo" },
+  { id: "description", label: "Descricao" },
+  { id: "owner", label: "Responsavel" },
+  { id: "assistants", label: "Assistentes" },
+  { id: "priority", label: "Prioridade" },
+  { id: "points", label: "Story Point" },
+  { id: "estimate", label: "Estimativa" },
+  { id: "sprint", label: "Sprint" },
+  { id: "category", label: "Categoria" },
+  { id: "client", label: "Empresa" },
+  { id: "linear", label: "Linear" },
+  { id: "createdAt", label: "Criado em" }
+] satisfies Array<{ id: BoardExportFieldId; label: string }>;
+const defaultBoardExportFields: BoardExportFieldId[] = ["title", "description", "owner", "assistants", "priority", "points", "estimate"];
 type WorkspaceStateSnapshot = Partial<{
   activeProductId: string;
   backlogConfig: BacklogColumn[];
@@ -5347,6 +5364,7 @@ function BoardPage({
   onToggleTheme: () => void;
 }) {
   const [draggedCard, setDraggedCard] = useState<DraggedCard | null>(null);
+  const [isBoardExportOpen, setIsBoardExportOpen] = useState(false);
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false);
   const [createTargetColumnIndex, setCreateTargetColumnIndex] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
@@ -5615,6 +5633,10 @@ function BoardPage({
           </div>
         </div>
         <div className="board-actions">
+          <button className="secondary-button" type="button" onClick={() => setIsBoardExportOpen(true)}>
+            <FileSpreadsheet size={17} />
+            Exportar
+          </button>
           <label className="search-field board-search-field">
             <Search size={18} />
             <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar titulo do card..." />
@@ -5714,6 +5736,13 @@ function BoardPage({
           backlogColumns={backlogColumns}
         />
       )}
+      {isBoardExportOpen && (
+        <BoardExportModal
+          columns={visibleColumns}
+          onClose={() => setIsBoardExportOpen(false)}
+          sprintName={selectedSprint?.name}
+        />
+      )}
       {selectedTask && (
         <TaskDetailsModal
           categories={categories}
@@ -5751,6 +5780,189 @@ function BoardPage({
       )}
     </main>
   );
+}
+
+function BoardExportModal({ columns, onClose, sprintName }: { columns: BoardColumn[]; onClose: () => void; sprintName?: string }) {
+  const [selectedColumnIndexes, setSelectedColumnIndexes] = useState<number[]>(() => columns.map((_, index) => index));
+  const [selectedFields, setSelectedFields] = useState<BoardExportFieldId[]>(defaultBoardExportFields);
+  const [exportText, setExportText] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+  const [formError, setFormError] = useState("");
+
+  function toggleColumn(columnIndex: number) {
+    setSelectedColumnIndexes((currentIndexes) =>
+      currentIndexes.includes(columnIndex)
+        ? currentIndexes.filter((index) => index !== columnIndex)
+        : [...currentIndexes, columnIndex].sort((firstIndex, secondIndex) => firstIndex - secondIndex)
+    );
+  }
+
+  function toggleField(fieldId: BoardExportFieldId) {
+    setSelectedFields((currentFields) =>
+      currentFields.includes(fieldId)
+        ? currentFields.filter((currentField) => currentField !== fieldId)
+        : [...currentFields, fieldId]
+    );
+  }
+
+  function generateExport() {
+    setCopyStatus("");
+
+    if (selectedColumnIndexes.length === 0) {
+      setFormError("Selecione ao menos uma aba para exportar.");
+      return;
+    }
+
+    if (selectedFields.length === 0) {
+      setFormError("Selecione ao menos um campo para exportar.");
+      return;
+    }
+
+    setFormError("");
+    setExportText(formatBoardExport(columns, selectedColumnIndexes, selectedFields, sprintName));
+  }
+
+  async function copyExportText() {
+    if (!exportText) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(exportText);
+      setCopyStatus("Conteudo copiado.");
+    } catch {
+      setCopyStatus("Nao foi possivel copiar automaticamente.");
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="board-export-modal modal-panel" role="dialog" aria-modal="true" aria-labelledby="board-export-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <h2 id="board-export-title">Exportar board</h2>
+            <p>Escolha as abas e os campos que entram na lista de cards.</p>
+          </div>
+          <button type="button" aria-label="Fechar" onClick={onClose}>
+            <X size={22} />
+          </button>
+        </header>
+
+        <div className="board-export-grid">
+          <section className="board-export-section">
+            <h3>Abas</h3>
+            <div className="board-export-options">
+              {columns.map((column, columnIndex) => (
+                <label key={`${column.title}-${columnIndex}`}>
+                  <input checked={selectedColumnIndexes.includes(columnIndex)} type="checkbox" onChange={() => toggleColumn(columnIndex)} />
+                  <span>{column.title}</span>
+                  <small>{column.cards.length} cards</small>
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="board-export-section">
+            <h3>Campos iniciais</h3>
+            <div className="board-export-options">
+              {boardExportFieldOptions.map((field) => (
+                <label key={field.id}>
+                  <input checked={selectedFields.includes(field.id)} type="checkbox" onChange={() => toggleField(field.id)} />
+                  <span>{field.label}</span>
+                </label>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {formError && <p className="form-error">{formError}</p>}
+
+        <div className="board-export-actions">
+          <button className="secondary-button" type="button" onClick={onClose}>Fechar</button>
+          <button className="primary-button" type="button" onClick={generateExport}><FileSpreadsheet size={16} />Gerar exportacao</button>
+        </div>
+
+        {exportText && (
+          <section className="board-export-output">
+            <div>
+              <h3>Conteudo gerado</h3>
+              <button className="secondary-button" type="button" onClick={copyExportText}><Copy size={16} />Copiar conteudo</button>
+            </div>
+            <textarea readOnly value={exportText} />
+            {copyStatus && <p>{copyStatus}</p>}
+          </section>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function formatBoardExport(columns: BoardColumn[], selectedColumnIndexes: number[], selectedFields: BoardExportFieldId[], sprintName?: string) {
+  const lines = [
+    `Exportacao do Board${sprintName ? ` - ${sprintName}` : ""}`,
+    `Gerado em ${new Date().toLocaleDateString("pt-BR")}`,
+    ""
+  ];
+
+  selectedColumnIndexes.forEach((columnIndex) => {
+    const column = columns[columnIndex];
+
+    if (!column) {
+      return;
+    }
+
+    lines.push(`## ${column.title}`);
+
+    if (column.cards.length === 0) {
+      lines.push("- Nenhum card nesta aba.", "");
+      return;
+    }
+
+    column.cards.forEach((card, cardIndex) => {
+      lines.push(`${cardIndex + 1}. ${card.title || "Sem titulo"}`);
+      selectedFields.forEach((fieldId) => {
+        lines.push(`   - ${getBoardExportFieldLabel(fieldId)}: ${getBoardExportFieldValue(card, fieldId)}`);
+      });
+      lines.push("");
+    });
+  });
+
+  return lines.join("\n").trim();
+}
+
+function getBoardExportFieldLabel(fieldId: BoardExportFieldId) {
+  return boardExportFieldOptions.find((field) => field.id === fieldId)?.label ?? fieldId;
+}
+
+function getBoardExportFieldValue(card: BoardCard, fieldId: BoardExportFieldId) {
+  switch (fieldId) {
+    case "title":
+      return card.title || "Sem titulo";
+    case "description":
+      return card.description || "Sem descricao";
+    case "owner":
+      return card.owner || "Sem responsavel";
+    case "assistants":
+      return card.assistants?.length ? card.assistants.join(", ") : "Sem assistentes";
+    case "priority":
+      return card.priority || "Sem prioridade";
+    case "points":
+      return `${card.points ?? 0} SP`;
+    case "estimate":
+      return card.estimate || "Sem estimativa";
+    case "sprint":
+      return card.sprint || "Sem sprint";
+    case "category":
+      return card.category || "Sem categoria";
+    case "client":
+      return card.client || "Sem empresa";
+    case "linear":
+      return card.linearUrl || card.linearIdentifier || card.linearIssueId || "Sem Linear";
+    case "createdAt":
+      return card.createdAt || "Sem data";
+    default:
+      return "";
+  }
 }
 
 function getMovedCard(card: BoardCard, columns: BoardColumn[], sourceColumnIndex: number, targetColumnIndex: number): BoardCard {
