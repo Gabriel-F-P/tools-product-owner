@@ -575,6 +575,7 @@ interface TaskDetail {
   createdAt?: string;
   status?: string;
   owner?: string;
+  assistants?: string[];
   points?: number;
   estimate?: string;
   generalFields?: TaskFieldValue[];
@@ -3316,7 +3317,7 @@ function BacklogPage({
   function updateBacklogEntryMeta(
     columnIndex: number,
     entryIndex: number,
-    updates: Partial<Pick<BacklogItem, "category" | "client" | "description" | "estimate" | "name" | "owner" | "priority" | "sprint" | "storyPoints" | "linearIdentifier" | "linearIssueId" | "linearUrl">>
+    updates: Partial<Pick<BacklogItem, "assistants" | "category" | "client" | "description" | "estimate" | "name" | "owner" | "priority" | "sprint" | "storyPoints" | "linearIdentifier" | "linearIssueId" | "linearUrl">>
   ) {
     const currentEntry = columns[columnIndex]?.entries[entryIndex];
     const nextEntry = currentEntry && !isEpic(currentEntry) ? { ...currentEntry, ...updates } : null;
@@ -3590,6 +3591,7 @@ function BacklogPage({
               estimate: updates.estimate,
               name: updates.title,
               owner: updates.owner,
+              assistants: updates.assistants,
               priority: updates.priority,
               sprint: updates.sprint,
               storyPoints: updates.points
@@ -4103,6 +4105,7 @@ function toBacklogTaskDetail(item: BacklogItem): TaskDetail {
     createdAt: item.createdAt,
     createdBy: "Amanda Silva",
     owner: item.owner,
+    assistants: item.assistants,
     points: item.storyPoints,
     generalFields: [
       ...getBacklogFieldValues(item),
@@ -5489,7 +5492,7 @@ function BoardPage({
     setSelectedTask(toBoardTaskDetail(card, status, columns));
   }
 
-  function saveBoardCardDetails(updates: Partial<Pick<BoardCard, "category" | "client" | "description" | "estimate" | "owner" | "points" | "priority" | "sprint" | "title">>) {
+  function saveBoardCardDetails(updates: Partial<Pick<BoardCard, "assistants" | "category" | "client" | "description" | "estimate" | "owner" | "points" | "priority" | "sprint" | "title">>) {
     if (!selectedBoardCardTarget) {
       return;
     }
@@ -5789,6 +5792,7 @@ function toBoardTaskDetail(card: BoardCard, status: string, columns: BoardColumn
     description: card.description,
     status,
     owner: card.owner,
+    assistants: card.assistants,
     points: card.points,
     estimate: card.estimate,
     sprint: card.sprint,
@@ -7000,7 +7004,7 @@ function TaskDetailsModal({
   editable?: boolean;
   members?: ProductMember[];
   onAiChange?: (updates: Partial<Pick<BacklogItem, "aiStory" | "aiCriteria" | "aiStoryPoints">>) => void;
-  onSave?: (updates: Partial<Pick<BoardCard, "category" | "client" | "description" | "estimate" | "owner" | "points" | "priority" | "sprint" | "title">>) => void;
+  onSave?: (updates: Partial<Pick<BoardCard, "assistants" | "category" | "client" | "description" | "estimate" | "owner" | "points" | "priority" | "sprint" | "title">>) => void;
   sprints?: SprintPlan[];
   task: TaskDetail;
   onClose: () => void;
@@ -7009,6 +7013,7 @@ function TaskDetailsModal({
   const [openDeliveryTab, setOpenDeliveryTab] = useState(deliveryHistory[0]?.tabTitle ?? "");
   const [draftTitle, setDraftTitle] = useState(task.title);
   const [draftOwner, setDraftOwner] = useState(task.owner ?? "");
+  const [draftAssistants, setDraftAssistants] = useState<string[]>(task.assistants ?? []);
   const [draftPoints, setDraftPoints] = useState(task.points ? String(task.points) : "");
   const [draftEstimate, setDraftEstimate] = useState(task.estimate ?? "");
   const [draftPriority, setDraftPriority] = useState<Priority>(task.priority);
@@ -7021,6 +7026,7 @@ function TaskDetailsModal({
     { id: "initial-origin", label: "Origem", value: task.source, type: "Lista" },
     ...(task.status ? [{ id: "initial-status", label: "Status", value: task.status, type: "Lista" as BoardFieldType }] : []),
     ...(draftOwner ? [{ id: "initial-owner", label: "Responsavel", value: draftOwner, type: "Pessoa" as BoardFieldType }] : []),
+    ...(draftAssistants.length > 0 ? [{ id: "initial-assistants", label: "Assistentes", value: draftAssistants.join(", "), type: "Pessoa" as BoardFieldType }] : []),
     ...(draftPoints ? [{ id: "initial-points", label: "Story points", value: draftPoints, type: "Numero" as BoardFieldType }] : []),
     ...(draftSprint ? [{ id: "initial-sprint", label: "Sprint", value: draftSprint, type: "Lista" as BoardFieldType }] : []),
     ...(draftCategory ? [{ id: "initial-category", label: "Categoria", value: draftCategory, type: "Lista" as BoardFieldType }] : []),
@@ -7035,6 +7041,7 @@ function TaskDetailsModal({
     }
 
     onSave({
+      assistants: draftAssistants.length > 0 ? draftAssistants : undefined,
       category: draftCategory || undefined,
       client: draftClient || undefined,
       description: draftDescription.trim() || undefined,
@@ -7045,6 +7052,14 @@ function TaskDetailsModal({
       sprint: draftSprint || undefined,
       title: draftTitle.trim() || task.title
     });
+  }
+
+  function toggleDraftAssistant(memberName: string) {
+    setDraftAssistants((currentAssistants) =>
+      currentAssistants.includes(memberName)
+        ? currentAssistants.filter((assistant) => assistant !== memberName)
+        : [...currentAssistants, memberName]
+    );
   }
 
   return (
@@ -7121,6 +7136,24 @@ function TaskDetailsModal({
                     {clients.map((client) => <option value={client.name} key={client.id}>{client.name}</option>)}
                   </select>
                 </label>
+                <div className="task-edit-field full assistant-picker">
+                  <span>Assistentes</span>
+                  <details>
+                    <summary>{draftAssistants.length > 0 ? `${draftAssistants.length} selecionado${draftAssistants.length > 1 ? "s" : ""}` : "Selecionar assistentes"}</summary>
+                    <div>
+                      {members.map((member) => (
+                        <label key={member.id}>
+                          <input
+                            checked={draftAssistants.includes(member.name)}
+                            type="checkbox"
+                            onChange={() => toggleDraftAssistant(member.name)}
+                          />
+                          {member.name}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                </div>
               </div>
             ) : (
               <div className="initial-form-list">
