@@ -1373,3 +1373,52 @@
 .mt-menu-list small {
   color: var(--mt-muted);
 }
+
+/* ---------- pautas como cabeçalho da sala (apenas informativo) ---------- */
+.mt-room-top {
+  display: grid;
+  gap: 12px;
+}
+
+.mt-room-agenda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--mt-line);
+  border-left: 4px solid var(--mt-brand);
+  border-radius: 10px;
+  background: var(--mt-surface);
+}
+
+.mt-room-agenda-label {
+  color: var(--mt-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mt-room-agenda ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mt-room-agenda li {
+  padding: 4px 12px;
+  border: 1px solid var(--mt-line);
+  border-radius: 999px;
+  background: var(--mt-soft);
+  color: var(--mt-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mt-room-side .mt-tabs button {
+  white-space: nowrap;
+}

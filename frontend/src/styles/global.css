@@ -6941,3 +6941,148 @@ input[type="checkbox"] {
   background: rgba(143, 255, 0, 0.1);
   color: #b6ff5c;
 }
+
+/* ===== Board em matriz: colunas = abas, linhas = projetos ===== */
+.board-matrix {
+  --matrix-card-slot: 112px; /* altura média de um card + espaçamento */
+  display: grid;
+  gap: 10px;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 0 12px;
+}
+
+.matrix-header,
+.matrix-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--matrix-columns), 220px);
+  gap: 8px;
+}
+
+.matrix-column-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #e1e1e1;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.matrix-column-header h2 {
+  margin: 0;
+  overflow: hidden;
+  flex: 1;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matrix-row {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #e1e1e1;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.matrix-row-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.matrix-row-head strong {
+  font-size: 16px;
+}
+
+.matrix-chevron {
+  flex: none;
+  transition: transform 0.15s;
+}
+
+.matrix-row.collapsed .matrix-chevron {
+  transform: rotate(-90deg);
+}
+
+.matrix-row-count {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(143, 255, 0, 0.22);
+  color: var(--brand-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.matrix-row-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.matrix-chip {
+  padding: 2px 8px;
+  border: 1px solid #e1e1e1;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.matrix-cell.kanban-column {
+  min-height: 140px;
+  padding: 8px;
+}
+
+/* 10 cards visíveis na vertical; acima disso a célula rola */
+.matrix-card-list {
+  max-height: calc(var(--matrix-card-slot) * 10);
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+}
+
+.matrix-cell .add-card-button {
+  padding: 10px 0 2px;
+  font-size: 14px;
+}
+
+.matrix-empty {
+  margin: 0;
+  padding: 24px;
+  border: 1px dashed #e1e1e1;
+  border-radius: 10px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+:root[data-theme="dark"] .matrix-column-header {
+  border-color: #353535;
+  background: rgba(27, 27, 27, 0.9);
+}
+
+:root[data-theme="dark"] .matrix-row {
+  border-color: #353535;
+  background: rgba(24, 24, 24, 0.75);
+}
+
+:root[data-theme="dark"] .matrix-chip,
+:root[data-theme="dark"] .matrix-empty {
+  border-color: #353535;
+}
+
+/* a altura máxima (10 cards) é medida em JS; o container precisa ser a referência de posição */
+.matrix-card-list {
+  position: relative;
+  max-height: none;
+}

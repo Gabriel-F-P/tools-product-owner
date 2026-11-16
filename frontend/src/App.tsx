@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, ReactNode, SyntheticEvent } from "react";
 import {
   ArrowDown,
@@ -117,6 +117,7 @@ type CreateItemInput = {
 
 const workspaceStateStorageKey = "toolz-workspace-state-v2";
 const authSessionStorageKey = "toolz-auth-session";
+const boardCollapsedStorageKey = "toolz-board-collapsed-projects";
 
 interface BoardTabField {
   id: string;
@@ -511,6 +512,8 @@ interface BoardCard {
   generalFields?: TaskFieldValue[];
   deliveryHistory?: DeliveryEntry[];
   done?: boolean;
+  /** Projeto (produto) ao qual o card pertence no board em matriz. */
+  productId?: string;
 }
 
 interface BoardColumn {
@@ -1082,6 +1085,9 @@ export function App() {
           columns={boardConfig}
           initialVisibleTabs={initialVisibleTabs}
           members={activeProduct.members}
+          products={products}
+          currentEmail={currentMember?.email}
+          activeProductId={activeProductId}
           onColumnsChange={setBoardConfig}
           onCardMovedToColumn={(cardTitle, columnTitle) => {
             const outgoingBacklogTarget = getOutgoingBoardConnection(boardConfig, columnTitle, "Backlog")?.targetId;
@@ -2696,6 +2702,47 @@ function RetroCeremony({ retrospectives, onRetrospectivesChange }: { retrospecti
       </div></section>
       <aside className="ceremony-context-panel"><h3>Participantes</h3>{boardMembers.map((member) => <p key={member}><span className="owner-pill">{member}</span> Membro {member}</p>)}<div className="ceremony-tip">Modo Play libera novos cards. Stop bloqueia adicionamento.</div></aside>
       <CeremonySteps />
+    </div>
+  );
+}
+
+const MATRIX_VISIBLE_CARDS = 10;
+
+/** Lista de cards de uma célula: mostra até 10 cards na vertical e rola além disso (altura medida nos cards reais). */
+function MatrixCardList({ children, count }: { children: ReactNode; count: number }) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+
+    if (!list) {
+      return;
+    }
+
+    const measure = () => {
+      const cards = Array.from(list.children) as HTMLElement[];
+
+      if (cards.length <= MATRIX_VISIBLE_CARDS) {
+        setMaxHeight(undefined);
+        return;
+      }
+
+      const tenth = cards[MATRIX_VISIBLE_CARDS - 1];
+      setMaxHeight(tenth.offsetTop + tenth.offsetHeight - cards[0].offsetTop);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    Array.from(list.children).forEach((child) => observer.observe(child));
+
+    return () => observer.disconnect();
+  }, [count]);
+
+  return (
+    <div className="kanban-card-list matrix-card-list" ref={listRef} style={maxHeight ? { maxHeight, overflowY: "auto" } : undefined}>
+      {children}
     </div>
   );
 }
@@ -4937,6 +4984,9 @@ function BoardPage({
   sprints,
   sprintStatuses,
   onSprintsChange,
+  products,
+  currentEmail,
+  activeProductId,
   theme,
   onToggleTheme
 }: {
@@ -4953,6 +5003,10 @@ function BoardPage({
   sprints: SprintPlan[];
   sprintStatuses: SprintStatus[];
   onSprintsChange: (sprints: SprintPlan[]) => void;
+  /** Todos os projetos (produtos); as linhas do board são os que contêm o membro logado. */
+  products: ProductAccess[];
+  currentEmail?: string;
+  activeProductId: string;
   theme: Theme;
   onToggleTheme: () => void;
 }) {
@@ -4960,6 +5014,14 @@ function BoardPage({
   const [isBoardExportOpen, setIsBoardExportOpen] = useState(false);
   const [isBoardSettingsOpen, setIsBoardSettingsOpen] = useState(false);
   const [createTargetColumnIndex, setCreateTargetColumnIndex] = useState<number | null>(null);
+  const [createTargetProductId, setCreateTargetProductId] = useState<string | null>(null);
+  const [collapsedProjects, setCollapsedProjects] = useState<string[]>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(boardCollapsedStorageKey) ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  });
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [selectedBoardCardTarget, setSelectedBoardCardTarget] = useState<{ columnIndex: number; cardIndex: number } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -4981,6 +5043,26 @@ function BoardPage({
   const productMemberInitials = members.map((member) => getInitials(member.name));
   const totalItems = filteredColumns.reduce((total, column) => total + column.cards.length, 0);
 
+  // Linhas da matriz: projetos em que o membro logado está inserido.
+  const projectRows = products.filter((product) => !currentEmail || product.members.some((member) => member.email === currentEmail));
+  const defaultProductId = projectRows.find((product) => product.id === activeProductId)?.id ?? projectRows[0]?.id ?? "";
+  const cardProductId = (card: BoardCard) => (card.productId && projectRows.some((product) => product.id === card.productId) ? card.productId : defaultProductId);
+  const rowMembers = projectRows.flatMap((product) => product.members).filter((member, index, all) => all.findIndex((other) => other.email === member.email) === index);
+
+  function toggleProject(productId: string) {
+    setCollapsedProjects((current) => {
+      const next = current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId];
+
+      try {
+        window.localStorage.setItem(boardCollapsedStorageKey, JSON.stringify(next));
+      } catch {
+        // sem persistência: o estado continua funcionando na sessão
+      }
+
+      return next;
+    });
+  }
+
   useEffect(() => {
     const nextActiveSprint = getActiveSprint(sprints, sprintStatuses);
 
@@ -5000,7 +5082,7 @@ function BoardPage({
     event.dataTransfer.dropEffect = "move";
   }
 
-  function handleDrop(event: DragEvent<HTMLElement>, targetColumnIndex: number, targetCardIndex: number) {
+  function handleDrop(event: DragEvent<HTMLElement>, targetColumnIndex: number, targetCardIndex: number, targetProductId?: string) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -5037,7 +5119,11 @@ function BoardPage({
         ? targetCardIndex - 1
         : targetCardIndex;
 
-    const movedCard = getMovedCard(removedCard, nextColumns, draggedCard.columnIndex, targetColumnIndex);
+    // Soltar numa linha de outro projeto move o card para aquele projeto.
+    const movedCard = {
+      ...getMovedCard(removedCard, nextColumns, draggedCard.columnIndex, targetColumnIndex),
+      productId: targetProductId ?? cardProductId(removedCard)
+    };
 
     targetColumn.cards.splice(adjustedIndex, 0, movedCard);
     onColumnsChange(nextColumns);
@@ -5108,7 +5194,8 @@ function BoardPage({
       createdBy: "Board",
       linearIdentifier: item.linearIdentifier,
       linearUrl: item.linearUrl,
-      generalFields: getGeneralFieldValues(item.name, item.owner ?? "", item.storyPoints ?? 0)
+      generalFields: getGeneralFieldValues(item.name, item.owner ?? "", item.storyPoints ?? 0),
+      productId: createTargetProductId ?? defaultProductId
     };
 
     if (linearAction !== "none") {
@@ -5144,6 +5231,7 @@ function BoardPage({
       )
     );
     setCreateTargetColumnIndex(null);
+    setCreateTargetProductId(null);
   }
 
   function openBoardCardDetails(card: BoardCard, columnIndex: number, cardIndex: number, status: string) {
@@ -5238,7 +5326,7 @@ function BoardPage({
             <ListFilter size={18} />
             <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Filtrar por responsavel">
               <option value="">Todos responsaveis</option>
-              {members.map((member) => <option value={member.name} key={member.id}>{member.name}</option>)}
+              {rowMembers.map((member) => <option value={member.name} key={member.id}>{member.name}</option>)}
             </select>
           </label>
           <button className="square-action" type="button" onClick={() => setIsBoardSettingsOpen(true)} aria-label="Configurar board" title="Configurar board">
@@ -5260,46 +5348,100 @@ function BoardPage({
       )}
 
       <DualHorizontalScroll className="board-scroll-frame">
-        <section
-          className="kanban-board"
-          aria-label="Board da sprint"
-        >
-          {filteredColumns.map((column, columnIndex) => (
-            <article className={`kanban-column ${column.color}`} key={column.title} onDragOver={handleDragOver} onDrop={(event) => handleDrop(event, columnIndex, visibleColumns[columnIndex]?.cards.length ?? column.cards.length)}>
-              <header className="kanban-column-header">
+        <section className="board-matrix" aria-label="Board da sprint por projeto" style={{ "--matrix-columns": filteredColumns.length } as CSSProperties}>
+          <div className="matrix-header" role="row">
+            {filteredColumns.map((column) => (
+              <header className={`matrix-column-header ${column.color}`} key={column.title} role="columnheader">
                 <span className={`column-icon ${column.color}`}>
                   {renderBoardIcon(column.icon, 15)}
                 </span>
                 <h2>{column.title}</h2>
                 <ColumnDescriptionButton description={column.description} title={column.title} />
                 <span className="column-count">{column.cards.length}</span>
-                <button type="button" aria-label={`Adicionar card em ${column.title}`} onClick={() => setCreateTargetColumnIndex(columnIndex)}>
-                  <Plus size={18} />
-                </button>
               </header>
+            ))}
+          </div>
 
-              <div className="kanban-card-list">
-                {column.cards.map(({ card, cardIndex }) => (
-                  <BoardCardItem
-                    card={card}
-                    isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
-                    key={card.id}
-                    onDragEnd={() => setDraggedCard(null)}
-                    onDragOver={handleDragOver}
-                    onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
-                    onDrop={(event) => handleDrop(event, columnIndex, cardIndex)}
-                    onOpenDetails={() => openBoardCardDetails(card, columnIndex, cardIndex, column.title)}
-                    onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
-                  />
-                ))}
-              </div>
+          {projectRows.length === 0 && (
+            <p className="matrix-empty">Você ainda não está inserido em nenhum projeto. Peça a um administrador para adicioná-lo.</p>
+          )}
 
-              <button className="add-card-button" type="button" onClick={() => setCreateTargetColumnIndex(columnIndex)}>
-                <Plus size={17} />
-                Adicionar card
-              </button>
-            </article>
-          ))}
+          {projectRows.map((project) => {
+            const isCollapsed = collapsedProjects.includes(project.id);
+            const rowCards = filteredColumns.map((column) => column.cards.filter(({ card }) => cardProductId(card) === project.id));
+            const rowTotal = rowCards.reduce((total, cards) => total + cards.length, 0);
+
+            return (
+              <section className={`matrix-row ${isCollapsed ? "collapsed" : ""}`} key={project.id} aria-label={`Projeto ${project.name}`}>
+                <button
+                  aria-expanded={!isCollapsed}
+                  className="matrix-row-head"
+                  onClick={() => toggleProject(project.id)}
+                  type="button"
+                >
+                  <ChevronDown className="matrix-chevron" size={18} />
+                  <strong>{project.name}</strong>
+                  <span className="matrix-row-count">{rowTotal} card{rowTotal === 1 ? "" : "s"}</span>
+                  {isCollapsed && (
+                    <span className="matrix-row-summary">
+                      {filteredColumns.map((column, columnIndex) => (
+                        <span className={`matrix-chip ${column.color}`} key={column.title} title={column.title}>
+                          {column.title}: {rowCards[columnIndex].length}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </button>
+
+                {!isCollapsed && (
+                  <div className="matrix-cells">
+                    {filteredColumns.map((column, columnIndex) => {
+                      const cells = rowCards[columnIndex];
+                      const endIndex = cells.length ? cells[cells.length - 1].cardIndex + 1 : visibleColumns[columnIndex]?.cards.length ?? column.cards.length;
+
+                      return (
+                        <article
+                          className={`kanban-column matrix-cell ${column.color}`}
+                          key={column.title}
+                          onDragOver={handleDragOver}
+                          onDrop={(event) => handleDrop(event, columnIndex, endIndex, project.id)}
+                        >
+                          <MatrixCardList count={cells.length}>
+                            {cells.map(({ card, cardIndex }) => (
+                              <BoardCardItem
+                                card={card}
+                                isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
+                                key={card.id}
+                                onDragEnd={() => setDraggedCard(null)}
+                                onDragOver={handleDragOver}
+                                onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
+                                onDrop={(event) => handleDrop(event, columnIndex, cardIndex, project.id)}
+                                onOpenDetails={() => openBoardCardDetails(card, columnIndex, cardIndex, column.title)}
+                                onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
+                              />
+                            ))}
+                          </MatrixCardList>
+
+                          <button
+                            aria-label={`Adicionar card em ${column.title} (${project.name})`}
+                            className="add-card-button"
+                            onClick={() => {
+                              setCreateTargetColumnIndex(columnIndex);
+                              setCreateTargetProductId(project.id);
+                            }}
+                            type="button"
+                          >
+                            <Plus size={17} />
+                            Adicionar card
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </section>
       </DualHorizontalScroll>
 
@@ -5341,7 +5483,7 @@ function BoardPage({
           categories={categories}
           clients={clients}
           editable={Boolean(selectedBoardCardTarget)}
-          members={members}
+          members={rowMembers}
           onClose={() => {
             setSelectedTask(null);
             setSelectedBoardCardTarget(null);
@@ -5356,9 +5498,12 @@ function BoardPage({
           categories={categories}
           clients={clients}
           defaultSprint={selectedSprint?.name}
-          members={members}
+          members={projectRows.find((project) => project.id === createTargetProductId)?.members ?? rowMembers}
           mode="board"
-          onClose={() => setCreateTargetColumnIndex(null)}
+          onClose={() => {
+            setCreateTargetColumnIndex(null);
+            setCreateTargetProductId(null);
+          }}
           onCreate={handleCreateBoardCard}
           sprints={sprints}
           submitLabel="Adicionar ao board"

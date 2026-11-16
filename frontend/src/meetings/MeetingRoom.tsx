@@ -5,7 +5,7 @@ import { ConfirmModal } from "./ui";
 import { agendaLines, defaultMeetingTitle, formatDate, formatDateTime } from "./types";
 import type { MemberLite, Meeting, MeetingTopicResult, Topic, TopicPresent } from "./types";
 
-type SidePanel = "topics" | "agenda" | "people";
+type SidePanel = "topics" | "people";
 
 /**
  * Tela da reunião em andamento: editor de texto rico + painel de tópicos pendentes.
@@ -113,6 +113,7 @@ export function MeetingRoom({
 
   return (
     <div className="mt-room">
+      <div className="mt-room-top">
       <header className="mt-room-header">
         <button className="mt-btn ghost" onClick={onExit} type="button">
           <ArrowLeft size={16} /> Reuniões
@@ -140,6 +141,18 @@ export function MeetingRoom({
         </button>
       </header>
 
+      {agendaItems.length > 0 && (
+        <section aria-label="Pautas da reunião" className="mt-room-agenda">
+          <span className="mt-room-agenda-label">Pautas</span>
+          <ul>
+            {agendaItems.map((line, index) => (
+              <li key={`${index}-${line}`}>{line}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      </div>
+
       <div className="mt-room-body">
         <section className="mt-room-editor" aria-label="Anotações da reunião">
           <RichEditor
@@ -154,24 +167,10 @@ export function MeetingRoom({
             <button aria-selected={panel === "topics"} className={panel === "topics" ? "active" : ""} onClick={() => setPanel("topics")} role="tab" type="button">
               Tópicos pendentes <span className="mt-count">{unanswered.length}</span>
             </button>
-            <button aria-selected={panel === "agenda"} className={panel === "agenda" ? "active" : ""} onClick={() => setPanel("agenda")} role="tab" type="button">
-              Pautas <span className="mt-count">{agendaItems.length}</span>
-            </button>
             <button aria-selected={panel === "people"} className={panel === "people" ? "active" : ""} onClick={() => setPanel("people")} role="tab" type="button">
               Participantes
             </button>
           </div>
-
-          {panel === "agenda" && (
-            <div className="mt-agenda">
-              {agendaItems.length === 0 && <p className="mt-empty">Nenhuma pauta informada para esta reunião.</p>}
-              <ul className="mt-agenda-list">
-                {agendaItems.map((line, index) => (
-                  <li key={`${index}-${line}`}>{line}</li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           {panel === "people" && (
             <ul className="mt-people">
