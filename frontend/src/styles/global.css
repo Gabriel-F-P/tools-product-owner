@@ -7120,3 +7120,29 @@ input[type="checkbox"] {
 .matrix-row.collapsed .matrix-collapsed-cell {
   align-self: center;
 }
+
+/* ===== Backlog em matriz: menu de criação dentro da célula ===== */
+.matrix-add-wrap {
+  position: relative;
+  margin-top: auto;
+}
+
+.matrix-add-wrap .add-card-button {
+  width: 100%;
+}
+
+.matrix-add-menu {
+  top: auto;
+  right: auto;
+  bottom: calc(100% + 4px);
+  left: 0;
+}
+
+:root[data-theme="dark"] .matrix-add-menu {
+  border-color: #353535;
+  background: #1b1b1b;
+}
+
+.backlog-matrix .matrix-cell.backlog-tab-column {
+  min-height: 140px;
+}

@@ -19,6 +19,8 @@ export interface BacklogItem {
   aiStory?: string;
   aiCriteria?: string;
   aiStoryPoints?: string;
+  /** Projeto (produto) ao qual o item pertence no backlog em matriz. */
+  productId?: string;
 }
 
 export interface BacklogEpic {
@@ -28,6 +30,7 @@ export interface BacklogEpic {
   objective: string;
   createdAt: string;
   items: BacklogItem[];
+  productId?: string;
 }
 
 export type BacklogEntry = BacklogItem | BacklogEpic;

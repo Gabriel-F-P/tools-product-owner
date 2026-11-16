@@ -118,6 +118,7 @@ type CreateItemInput = {
 const workspaceStateStorageKey = "toolz-workspace-state-v2";
 const authSessionStorageKey = "toolz-auth-session";
 const boardCollapsedStorageKey = "toolz-board-collapsed-projects";
+const backlogCollapsedStorageKey = "toolz-backlog-collapsed-projects";
 
 interface BoardTabField {
   id: string;
@@ -1063,6 +1064,9 @@ export function App() {
           clients={clientConfig}
           columns={backlogConfig}
           members={activeProduct.members}
+          products={products}
+          currentEmail={currentMember?.email}
+          activeProductId={activeProductId}
           onColumnsChange={setBacklogConfig}
           onCategoriesChange={setCategoryConfig}
           onEntryMovedToColumn={(entry, columnTitle) => {
@@ -2708,6 +2712,33 @@ function RetroCeremony({ retrospectives, onRetrospectivesChange }: { retrospecti
 
 const MATRIX_VISIBLE_CARDS = 10;
 
+/** Projetos recolhidos na matriz (persistido no navegador por tela). */
+function useCollapsedProjects(storageKey: string): [string[], (productId: string) => void] {
+  const [collapsed, setCollapsed] = useState<string[]>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  });
+
+  function toggle(productId: string) {
+    setCollapsed((current) => {
+      const next = current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId];
+
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // sem persistência: o estado continua funcionando na sessão
+      }
+
+      return next;
+    });
+  }
+
+  return [collapsed, toggle];
+}
+
 /** Lista de cards de uma célula: mostra até 10 cards na vertical e rola além disso (altura medida nos cards reais). */
 function MatrixCardList({ children, count }: { children: ReactNode; count: number }) {
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -2813,6 +2844,9 @@ function BacklogPage({
   onCategoriesChange,
   onEntryMovedToColumn,
   sprints,
+  products,
+  currentEmail,
+  activeProductId,
   theme,
   onToggleTheme
 }: {
@@ -2825,6 +2859,10 @@ function BacklogPage({
   onCategoriesChange: (categories: CategoryConfig[]) => void;
   onEntryMovedToColumn: (entry: BacklogEntry, columnTitle: string) => void;
   sprints: SprintPlan[];
+  /** Todos os projetos (produtos); as linhas do backlog são os que contêm o membro logado. */
+  products: ProductAccess[];
+  currentEmail?: string;
+  activeProductId: string;
   theme: Theme;
   onToggleTheme: () => void;
 }) {
@@ -2832,6 +2870,9 @@ function BacklogPage({
   const [isCreateEpicModalOpen, setIsCreateEpicModalOpen] = useState(false);
   const [isBacklogSettingsOpen, setIsBacklogSettingsOpen] = useState(false);
   const [createMenuColumnIndex, setCreateMenuColumnIndex] = useState<number | null>(null);
+  const [createMenuProductId, setCreateMenuProductId] = useState<string | null>(null);
+  const [createTargetProductId, setCreateTargetProductId] = useState<string | null>(null);
+  const [collapsedProjects, toggleProject] = useCollapsedProjects(backlogCollapsedStorageKey);
   const [createTargetColumnIndex, setCreateTargetColumnIndex] = useState(0);
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [selectedBacklogTask, setSelectedBacklogTask] = useState<{ columnIndex: number; entryIndex: number; aiConfig: { story: boolean; criteria: boolean; sp: boolean } } | null>(null);
@@ -2846,6 +2887,12 @@ function BacklogPage({
   const selectedBacklogEntry = selectedBacklogTask ? columns[selectedBacklogTask.columnIndex]?.entries[selectedBacklogTask.entryIndex] : null;
   const selectedBacklogItem = selectedBacklogEntry && !isEpic(selectedBacklogEntry) ? selectedBacklogEntry : null;
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+
+  // Linhas da matriz: projetos em que o membro logado está inserido.
+  const projectRows = products.filter((product) => !currentEmail || product.members.some((member) => member.email === currentEmail));
+  const defaultProductId = projectRows.find((product) => product.id === activeProductId)?.id ?? projectRows[0]?.id ?? "";
+  const entryProductId = (entry: BacklogEntry) => (entry.productId && projectRows.some((product) => product.id === entry.productId) ? entry.productId : defaultProductId);
+  const rowMembers = projectRows.flatMap((product) => product.members).filter((member, index, all) => all.findIndex((other) => other.email === member.email) === index);
   const visibleBacklogColumns = columns.map((column) => ({
     ...column,
     entries: column.entries
@@ -2870,10 +2917,12 @@ function BacklogPage({
     const nextOrder = totalEntries + 1;
     const today = new Date().toLocaleDateString("pt-BR");
     const epicId = `EPIC-${Date.now()}`;
+    const productId = createTargetProductId ?? defaultProductId;
     const items = epic.items.map((item, index) => ({
       ...item,
       order: nextOrder + index + 1,
-      createdAt: today
+      createdAt: today,
+      productId
     }));
 
     const newEpic: BacklogEpic = {
@@ -2881,7 +2930,8 @@ function BacklogPage({
       id: epicId,
       order: nextOrder,
       createdAt: today,
-      items
+      items,
+      productId
     };
 
     onColumnsChange(
@@ -2899,7 +2949,8 @@ function BacklogPage({
     let newItem: BacklogItem = {
       ...item,
       order: nextOrder,
-      createdAt: today
+      createdAt: today,
+      productId: createTargetProductId ?? defaultProductId
     };
 
     if (linearAction !== "none") {
@@ -2956,7 +3007,7 @@ function BacklogPage({
     event.dataTransfer.dropEffect = "move";
   }
 
-  function handleBacklogDrop(event: DragEvent<HTMLElement>, targetColumnIndex: number, targetEntryIndex: number) {
+  function handleBacklogDrop(event: DragEvent<HTMLElement>, targetColumnIndex: number, targetEntryIndex: number, targetProductId?: string) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -2965,11 +3016,17 @@ function BacklogPage({
     }
 
     const nextColumns = columns.map((column) => ({ ...column, entries: [...column.entries] }));
-    const movedEntry = removeDraggedBacklogEntry(nextColumns, draggedEntry);
+    const removedEntry = removeDraggedBacklogEntry(nextColumns, draggedEntry);
 
-    if (!movedEntry) {
+    if (!removedEntry) {
       return;
     }
+
+    // Soltar numa linha de outro projeto move o item (e os itens do épico) para aquele projeto.
+    const nextProductId = targetProductId ?? entryProductId(removedEntry);
+    const movedEntry: BacklogEntry = isEpic(removedEntry)
+      ? { ...removedEntry, productId: nextProductId, items: removedEntry.items.map((item) => ({ ...item, productId: nextProductId })) }
+      : { ...removedEntry, productId: nextProductId };
 
     const adjustedIndex =
       draggedEntry.itemIndex === undefined && draggedEntry.columnIndex === targetColumnIndex && draggedEntry.entryIndex < targetEntryIndex
@@ -3006,9 +3063,11 @@ function BacklogPage({
     });
   }
 
-  function openCreateModal(columnIndex: number, type: "task" | "epic") {
+  function openCreateModal(columnIndex: number, type: "task" | "epic", productId: string) {
     setCreateTargetColumnIndex(columnIndex);
+    setCreateTargetProductId(productId);
     setCreateMenuColumnIndex(null);
+    setCreateMenuProductId(null);
 
     if (type === "epic") {
       setIsCreateEpicModalOpen(true);
@@ -3185,74 +3244,128 @@ function BacklogPage({
             )}
 
             <DualHorizontalScroll className="backlog-scroll-frame">
-              <section
-                className={`kanban-board backlog-tabs-board ${viewMode === "list" ? "list-view" : ""}`}
-                aria-label="Abas do backlog"
-                style={{ "--board-column-width": `calc((100% - ${(Math.max(initialVisibleTabs, 1) - 1) * 8 + 32}px) / ${Math.max(initialVisibleTabs, 1)})` } as CSSProperties}
-              >
-                {visibleBacklogColumns.map((column, columnIndex) => (
-                  <article className={`kanban-column backlog-tab-column ${column.color}`} key={`${column.title}-${columnIndex}`} onDragOver={handleBacklogDragOver} onDrop={(event) => handleBacklogDrop(event, columnIndex, columns[columnIndex]?.entries.length ?? column.entries.length)}>
-                    <header className="kanban-column-header">
+              <section className="board-matrix backlog-matrix" aria-label="Backlog por projeto" style={{ "--matrix-columns": visibleBacklogColumns.length } as CSSProperties}>
+                <div className="matrix-grid matrix-header" role="row">
+                  <div className="matrix-corner" role="columnheader">Projetos</div>
+                  {visibleBacklogColumns.map((column, columnIndex) => (
+                    <header className={`matrix-column-header ${column.color}`} key={`${column.title}-${columnIndex}`} role="columnheader">
                       <span className={`column-icon ${column.color}`}>{renderBoardIcon(column.icon, 15)}</span>
                       <h2>{column.title}</h2>
                       {(column.connections ?? []).some((connection) => connection.screen === "Sprint") && <KanbanSquare className="linked-sprint-icon" size={16} />}
                       <ColumnDescriptionButton description={column.description} title={column.title} />
                       <span className="column-count">{column.entries.length}</span>
-                      <span className="column-create-wrap">
-                        <button
-                          className="column-create-button"
-                          type="button"
-                          aria-expanded={createMenuColumnIndex === columnIndex}
-                          aria-label={`Criar item em ${column.title}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setCreateMenuColumnIndex((currentIndex) => currentIndex === columnIndex ? null : columnIndex);
-                          }}
-                        >
-                          <Plus size={17} />
-                        </button>
-                        {createMenuColumnIndex === columnIndex && (
-                          <span className="column-create-menu">
-                            <button type="button" onClick={() => openCreateModal(columnIndex, "task")}>Tarefa</button>
-                            <button type="button" onClick={() => openCreateModal(columnIndex, "epic")}>Epico</button>
-                          </span>
-                        )}
-                      </span>
                     </header>
+                  ))}
+                </div>
 
-                    <div className="kanban-card-list">
-                      {column.entries.map(({ entry, entryIndex }) => (
-                        <BacklogTabEntryCard
-                          entry={entry}
-                          categories={categories}
-                          members={members}
-                          expanded={isEpic(entry) ? expandedEpics.has(entry.id) : false}
-                          isDragging={draggedEntry?.columnIndex === columnIndex && draggedEntry.entryIndex === entryIndex}
-                          key={isEpic(entry) ? entry.id : `item-${entry.order}`}
-                          onDragEnd={() => setDraggedEntry(null)}
-                          onDragOver={handleBacklogDragOver}
-                          onEpicItemDragStart={(event, itemIndex) => handleBacklogEpicItemDragStart(event, columnIndex, entryIndex, itemIndex)}
-                          onDragStart={(event) => handleBacklogDragStart(event, columnIndex, entryIndex)}
-                          onDrop={(event) => handleBacklogDrop(event, columnIndex, entryIndex)}
-                          onOpenTask={setSelectedTask}
-                          onOpenEntry={() => setSelectedBacklogTask({
-                            aiConfig: {
-                              criteria: !!column.aiCriteriaEnabled,
-                              sp: !!column.aiStoryPointsEnabled,
-                              story: !!column.aiStoryEnabled
-                            },
-                            columnIndex,
-                            entryIndex
-                          })}
-                          onToggleEpic={() => isEpic(entry) && toggleEpic(entry.id)}
-                          onUpdateMeta={(updates) => updateBacklogEntryMeta(columnIndex, entryIndex, updates)}
-                          onSaveLinearLink={(linearUrl) => saveBacklogEntryLinearLink(columnIndex, entryIndex, linearUrl)}
-                          onRequestDelete={() => setDeleteTarget({ columnIndex, entryIndex, title: entry.name })}
-                        />
-                      ))}
-                    </div>
-                  </article>
-                ))}
+                {projectRows.length === 0 && (
+                  <p className="matrix-empty">Você ainda não está inserido em nenhum projeto. Peça a um administrador para adicioná-lo.</p>
+                )}
+
+                {projectRows.map((project) => {
+                  const isCollapsed = collapsedProjects.includes(project.id);
+                  const rowEntries = visibleBacklogColumns.map((column) => column.entries.filter(({ entry }) => entryProductId(entry) === project.id));
+                  const rowTotal = rowEntries.reduce((total, entries) => total + entries.length, 0);
+
+                  return (
+                    <section
+                      aria-label={`Projeto ${project.name}`}
+                      className={`matrix-grid matrix-row ${isCollapsed ? "collapsed" : ""}`}
+                      key={project.id}
+                    >
+                      <button
+                        aria-expanded={!isCollapsed}
+                        className="matrix-row-head"
+                        onClick={() => toggleProject(project.id)}
+                        title={isCollapsed ? "Ampliar projeto" : "Reduzir projeto"}
+                        type="button"
+                      >
+                        <ChevronDown className="matrix-chevron" size={18} />
+                        <strong>{project.name}</strong>
+                        <span className="matrix-row-count">{rowTotal} item{rowTotal === 1 ? "" : "s"}</span>
+                      </button>
+
+                      {visibleBacklogColumns.map((column, columnIndex) => {
+                        const cells = rowEntries[columnIndex];
+
+                        if (isCollapsed) {
+                          return (
+                            <div className={`matrix-collapsed-cell ${column.color}`} key={`${column.title}-${columnIndex}`} title={`${column.title}: ${cells.length}`}>
+                              <span>{cells.length}</span>
+                            </div>
+                          );
+                        }
+
+                        const endIndex = cells.length ? cells[cells.length - 1].entryIndex + 1 : columns[columnIndex]?.entries.length ?? column.entries.length;
+                        const isMenuOpen = createMenuColumnIndex === columnIndex && createMenuProductId === project.id;
+
+                        return (
+                          <article
+                            className={`kanban-column matrix-cell backlog-tab-column ${column.color}`}
+                            key={`${column.title}-${columnIndex}`}
+                            onDragOver={handleBacklogDragOver}
+                            onDrop={(event) => handleBacklogDrop(event, columnIndex, endIndex, project.id)}
+                          >
+                            <MatrixCardList count={cells.length}>
+                              {cells.map(({ entry, entryIndex }) => (
+                                <BacklogTabEntryCard
+                                  entry={entry}
+                                  categories={categories}
+                                  members={project.members}
+                                  expanded={isEpic(entry) ? expandedEpics.has(entry.id) : false}
+                                  isDragging={draggedEntry?.columnIndex === columnIndex && draggedEntry.entryIndex === entryIndex}
+                                  key={isEpic(entry) ? entry.id : `item-${entry.order}`}
+                                  onDragEnd={() => setDraggedEntry(null)}
+                                  onDragOver={handleBacklogDragOver}
+                                  onEpicItemDragStart={(event, itemIndex) => handleBacklogEpicItemDragStart(event, columnIndex, entryIndex, itemIndex)}
+                                  onDragStart={(event) => handleBacklogDragStart(event, columnIndex, entryIndex)}
+                                  onDrop={(event) => handleBacklogDrop(event, columnIndex, entryIndex, project.id)}
+                                  onOpenTask={setSelectedTask}
+                                  onOpenEntry={() => setSelectedBacklogTask({
+                                    aiConfig: {
+                                      criteria: !!column.aiCriteriaEnabled,
+                                      sp: !!column.aiStoryPointsEnabled,
+                                      story: !!column.aiStoryEnabled
+                                    },
+                                    columnIndex,
+                                    entryIndex
+                                  })}
+                                  onToggleEpic={() => isEpic(entry) && toggleEpic(entry.id)}
+                                  onUpdateMeta={(updates) => updateBacklogEntryMeta(columnIndex, entryIndex, updates)}
+                                  onSaveLinearLink={(linearUrl) => saveBacklogEntryLinearLink(columnIndex, entryIndex, linearUrl)}
+                                  onRequestDelete={() => setDeleteTarget({ columnIndex, entryIndex, title: entry.name })}
+                                />
+                              ))}
+                            </MatrixCardList>
+
+                            <span className="matrix-add-wrap">
+                              <button
+                                aria-expanded={isMenuOpen}
+                                aria-label={`Criar item em ${column.title} (${project.name})`}
+                                className="add-card-button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setCreateMenuColumnIndex(isMenuOpen ? null : columnIndex);
+                                  setCreateMenuProductId(isMenuOpen ? null : project.id);
+                                }}
+                                type="button"
+                              >
+                                <Plus size={17} />
+                                Adicionar
+                              </button>
+                              {isMenuOpen && (
+                                <span className="column-create-menu matrix-add-menu">
+                                  <button type="button" onClick={() => openCreateModal(columnIndex, "task", project.id)}>Tarefa</button>
+                                  <button type="button" onClick={() => openCreateModal(columnIndex, "epic", project.id)}>Epico</button>
+                                </span>
+                              )}
+                            </span>
+                          </article>
+                        );
+                      })}
+                    </section>
+                  );
+                })}
               </section>
             </DualHorizontalScroll>
 
@@ -3263,7 +3376,7 @@ function BacklogPage({
         </div>
       </section>
 
-      {isCreateModalOpen && <CreateItemModal categories={categories} clients={clients} members={members} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateItem} sprints={sprints} />}
+      {isCreateModalOpen && <CreateItemModal categories={categories} clients={clients} members={projectRows.find((project) => project.id === createTargetProductId)?.members ?? rowMembers} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateItem} sprints={sprints} />}
       {isCreateEpicModalOpen && <CreateEpicModal categories={categories} onClose={() => setIsCreateEpicModalOpen(false)} onCreate={handleCreateEpic} />}
       {isBacklogSettingsOpen && (
         <BacklogSettingsModal
@@ -5288,31 +5401,6 @@ function BoardPage({
       <Topbar title="Board" subtitle="Acompanhe o progresso dos itens de delivery" theme={theme} onToggleTheme={onToggleTheme} />
 
       <section className="board-controls" aria-label="Controles do board">
-        <div className="sprint-controls board-sprint-context">
-          <label className="board-sprint-select">
-            <span>Sprint</span>
-            <select value={selectedSprint?.id ?? ""} onChange={(event) => setSelectedSprintId(event.target.value)}>
-              {sprints.map((sprint) => (
-                <option value={sprint.id} key={sprint.id}>{sprint.name}</option>
-              ))}
-            </select>
-          </label>
-          <div className="board-sprint-summary">
-            {selectedSprint && (
-              <div className="board-sprint-meta">
-                <textarea
-                  aria-label={`Objetivo da ${selectedSprint.name}`}
-                  value={selectedSprint.objective}
-                  onChange={(event) => updateSelectedSprintObjective(event.target.value)}
-                />
-                <span>{selectedSprint.start} - {selectedSprint.end}</span>
-              </div>
-            )}
-            <div className="board-members" aria-label="Membros da sprint">
-              {productMemberInitials.map((initials) => <span key={initials}>{initials}</span>)}
-            </div>
-          </div>
-        </div>
         <div className="board-actions">
           <button className="secondary-button" type="button" onClick={() => setIsBoardExportOpen(true)}>
             <FileSpreadsheet size={17} />
