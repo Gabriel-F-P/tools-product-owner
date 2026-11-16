@@ -7281,3 +7281,65 @@ input[type="checkbox"] {
 :root[data-theme="dark"] .permissions-member-row button:hover {
   background: rgba(255, 123, 114, 0.2);
 }
+
+/* ===== Cabeçalho do projeto: só a seta recolhe; sprint própria por projeto ===== */
+.matrix-row-head {
+  cursor: default;
+}
+
+.matrix-row-head:hover {
+  background: var(--matrix-surface);
+}
+
+.matrix-collapse {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--matrix-line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.matrix-collapse:hover,
+.matrix-collapse:focus-visible {
+  border-color: #8fff00;
+  color: var(--brand-text);
+  outline: none;
+}
+
+.matrix-sprint-select {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--matrix-line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.matrix-sprint-select:focus {
+  border-color: #8fff00;
+  outline: none;
+}
+
+:root[data-theme="dark"] .matrix-sprint-select {
+  background: #222222;
+  color-scheme: dark;
+}
+
+.matrix-sprint-chip {
+  padding: 2px 9px;
+  border: 1px solid var(--matrix-line);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}

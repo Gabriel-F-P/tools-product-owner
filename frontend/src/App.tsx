@@ -1633,6 +1633,7 @@ function boardCardFromBacklogItem(item: BacklogItem): BoardCard {
     linearUrl: item.linearUrl,
     createdAt: item.createdAt,
     createdBy: "Backlog",
+    productId: item.productId,
     generalFields: getBacklogFieldValues(item),
     deliveryHistory: []
   };
@@ -3296,18 +3297,22 @@ function BacklogPage({
                       className={`matrix-grid matrix-row ${isCollapsed ? "collapsed" : ""}`}
                       key={project.id}
                     >
-                      <button
-                        aria-expanded={!isCollapsed}
-                        className="matrix-row-head"
-                        onClick={() => toggleProject(project.id)}
-                        title={isCollapsed ? "Ampliar projeto" : "Reduzir projeto"}
-                        type="button"
-                      >
-                        <ChevronDown className="matrix-chevron" size={18} />
+                      <div className="matrix-row-head">
+                        {/* Só a seta recolhe/amplia o projeto; o restante da área não é clicável. */}
+                        <button
+                          aria-expanded={!isCollapsed}
+                          aria-label={`${isCollapsed ? "Ampliar" : "Reduzir"} projeto ${project.name}`}
+                          className="matrix-collapse"
+                          onClick={() => toggleProject(project.id)}
+                          title={isCollapsed ? "Ampliar projeto" : "Reduzir projeto"}
+                          type="button"
+                        >
+                          <ChevronDown className="matrix-chevron" size={18} />
+                        </button>
                         <strong>{project.name}</strong>
                         <span className={`matrix-method-tag ${project.method ?? "sprint"}`}>{projectMethodLabel[project.method ?? "sprint"]}</span>
                         <span className="matrix-row-count">{rowTotal} item{rowTotal === 1 ? "" : "s"}</span>
-                      </button>
+                      </div>
 
                       {visibleBacklogColumns.map((column, columnIndex) => {
                         const cells = rowEntries[columnIndex];
@@ -5166,9 +5171,33 @@ function BoardPage({
   const [deleteTarget, setDeleteTarget] = useState<{ columnIndex: number; cardIndex: number; title: string } | null>(null);
   const [integrationNotice, setIntegrationNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
   const activeSprint = getActiveSprint(sprints, sprintStatuses);
-  const [selectedSprintId, setSelectedSprintId] = useState(activeSprint?.id ?? sprints[0]?.id ?? "");
-  const selectedSprint = sprints.find((sprint) => sprint.id === selectedSprintId) ?? activeSprint ?? sprints[0];
-  const visibleColumns = mergeBoardColumnsWithSprintConnections(columns, sprintBacklogItems, selectedSprint?.name);
+  // Sprint padrão: usada na exportação e para cards sem sprint. Cada projeto Sprint escolhe a sua própria.
+  const selectedSprint = activeSprint ?? sprints[0];
+  const [sprintByProject, setSprintByProject] = useState<Record<string, string>>({});
+
+  // Linhas da matriz: projetos em que o membro logado está inserido.
+  const projectRows = products.filter((product) => !currentEmail || product.members.some((member) => member.email === currentEmail));
+  const defaultProductId = projectRows.find((product) => product.id === activeProductId)?.id ?? projectRows[0]?.id ?? "";
+  const cardProductId = (card: BoardCard) => (card.productId && projectRows.some((product) => product.id === card.productId) ? card.productId : defaultProductId);
+  const rowMembers = projectRows.flatMap((product) => product.members).filter((member, index, all) => all.findIndex((other) => other.email === member.email) === index);
+
+  const isSprintProject = (product: ProductAccess) => (product.method ?? "sprint") === "sprint";
+  /** Sprint exibida no projeto (só projetos Sprint têm); a escolha afeta apenas aquele projeto. */
+  const sprintOfProject = (productId?: string | null) => {
+    const product = projectRows.find((item) => item.id === productId);
+
+    if (!product || !isSprintProject(product)) {
+      return undefined;
+    }
+
+    return sprints.find((sprint) => sprint.id === sprintByProject[product.id]) ?? activeSprint ?? sprints[0];
+  };
+  const cardInRow = (card: BoardCard, product: ProductAccess) =>
+    cardProductId(card) === product.id &&
+    (!isSprintProject(product) || (card.sprint?.trim() || activeSprint?.name) === sprintOfProject(product.id)?.name);
+
+  const rowSprintNames = projectRows.map((product) => sprintOfProject(product.id)?.name).filter((name): name is string => Boolean(name));
+  const visibleColumns = mergeBoardColumnsWithSprintConnections(columns, sprintBacklogItems, rowSprintNames);
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const matchesOwnerFilter = (card: BoardCard) => !ownerFilter || card.owner === ownerFilter || (card.assistants ?? []).includes(ownerFilter);
   const filteredColumns = visibleColumns.map((column) => ({
@@ -5178,13 +5207,9 @@ function BoardPage({
       .filter(({ card }) => matchesOwnerFilter(card) && (!normalizedSearchTerm || card.title.toLowerCase().includes(normalizedSearchTerm)))
   }));
   const productMemberInitials = members.map((member) => getInitials(member.name));
-  const totalItems = filteredColumns.reduce((total, column) => total + column.cards.length, 0);
-
-  // Linhas da matriz: projetos em que o membro logado está inserido.
-  const projectRows = products.filter((product) => !currentEmail || product.members.some((member) => member.email === currentEmail));
-  const defaultProductId = projectRows.find((product) => product.id === activeProductId)?.id ?? projectRows[0]?.id ?? "";
-  const cardProductId = (card: BoardCard) => (card.productId && projectRows.some((product) => product.id === card.productId) ? card.productId : defaultProductId);
-  const rowMembers = projectRows.flatMap((product) => product.members).filter((member, index, all) => all.findIndex((other) => other.email === member.email) === index);
+  // Contagens consideram só o que está visível nas linhas (respeitando a sprint de cada projeto).
+  const columnCounts = filteredColumns.map((column) => column.cards.filter(({ card }) => projectRows.some((product) => cardInRow(card, product))).length);
+  const totalItems = columnCounts.reduce((total, count) => total + count, 0);
 
   function toggleProject(productId: string) {
     setCollapsedProjects((current) => {
@@ -5200,13 +5225,6 @@ function BoardPage({
     });
   }
 
-  useEffect(() => {
-    const nextActiveSprint = getActiveSprint(sprints, sprintStatuses);
-
-    if (nextActiveSprint && !selectedSprintId) {
-      setSelectedSprintId(nextActiveSprint.id);
-    }
-  }, [selectedSprintId, sprints, sprintStatuses]);
 
   function handleDragStart(event: DragEvent<HTMLElement>, columnIndex: number, cardIndex: number) {
     event.dataTransfer.effectAllowed = "move";
@@ -5256,10 +5274,14 @@ function BoardPage({
         ? targetCardIndex - 1
         : targetCardIndex;
 
-    // Soltar numa linha de outro projeto move o card para aquele projeto.
+    // Soltar numa linha de outro projeto move o card para aquele projeto (e para a sprint exibida nele, se for Sprint).
+    const nextProductId = targetProductId ?? cardProductId(removedCard);
+    const changedProject = nextProductId !== cardProductId(removedCard);
+    const nextSprint = changedProject ? sprintOfProject(nextProductId)?.name : undefined;
     const movedCard = {
       ...getMovedCard(removedCard, nextColumns, draggedCard.columnIndex, targetColumnIndex),
-      productId: targetProductId ?? cardProductId(removedCard)
+      productId: nextProductId,
+      ...(nextSprint ? { sprint: nextSprint } : {})
     };
 
     targetColumn.cards.splice(adjustedIndex, 0, movedCard);
@@ -5458,14 +5480,14 @@ function BoardPage({
         <section className="board-matrix" aria-label="Board da sprint por projeto" style={{ "--matrix-columns": filteredColumns.length } as CSSProperties}>
           <div className="matrix-grid matrix-header" role="row">
             <div className="matrix-corner" role="columnheader">Projetos</div>
-            {filteredColumns.map((column) => (
+            {filteredColumns.map((column, columnIndex) => (
               <header className={`matrix-column-header ${column.color}`} key={column.title} role="columnheader">
                 <span className={`column-icon ${column.color}`}>
                   {renderBoardIcon(column.icon, 15)}
                 </span>
                 <h2>{column.title}</h2>
                 <ColumnDescriptionButton description={column.description} title={column.title} />
-                <span className="column-count">{column.cards.length}</span>
+                <span className="column-count">{columnCounts[columnIndex]}</span>
               </header>
             ))}
           </div>
@@ -5476,8 +5498,9 @@ function BoardPage({
 
           {projectRows.map((project) => {
             const isCollapsed = collapsedProjects.includes(project.id);
-            const rowCards = filteredColumns.map((column) => column.cards.filter(({ card }) => cardProductId(card) === project.id));
+            const rowCards = filteredColumns.map((column) => column.cards.filter(({ card }) => cardInRow(card, project)));
             const rowTotal = rowCards.reduce((total, cards) => total + cards.length, 0);
+            const rowSprint = sprintOfProject(project.id);
 
             return (
               <section
@@ -5485,18 +5508,35 @@ function BoardPage({
                 className={`matrix-grid matrix-row ${isCollapsed ? "collapsed" : ""}`}
                 key={project.id}
               >
-                <button
-                  aria-expanded={!isCollapsed}
-                  className="matrix-row-head"
-                  onClick={() => toggleProject(project.id)}
-                  title={isCollapsed ? "Ampliar projeto" : "Reduzir projeto"}
-                  type="button"
-                >
-                  <ChevronDown className="matrix-chevron" size={18} />
+                <div className="matrix-row-head">
+                  {/* Só a seta recolhe/amplia o projeto; o restante da área não é clicável. */}
+                  <button
+                    aria-expanded={!isCollapsed}
+                    aria-label={`${isCollapsed ? "Ampliar" : "Reduzir"} projeto ${project.name}`}
+                    className="matrix-collapse"
+                    onClick={() => toggleProject(project.id)}
+                    title={isCollapsed ? "Ampliar projeto" : "Reduzir projeto"}
+                    type="button"
+                  >
+                    <ChevronDown className="matrix-chevron" size={18} />
+                  </button>
                   <strong>{project.name}</strong>
                   <span className={`matrix-method-tag ${project.method ?? "sprint"}`}>{projectMethodLabel[project.method ?? "sprint"]}</span>
+                  {rowSprint && !isCollapsed && (
+                    <select
+                      aria-label={`Sprint exibida em ${project.name}`}
+                      className="matrix-sprint-select"
+                      onChange={(event) => setSprintByProject((current) => ({ ...current, [project.id]: event.target.value }))}
+                      value={rowSprint.id}
+                    >
+                      {sprints.map((sprint) => (
+                        <option key={sprint.id} value={sprint.id}>{sprint.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {rowSprint && isCollapsed && <span className="matrix-sprint-chip">{rowSprint.name}</span>}
                   <span className="matrix-row-count">{rowTotal} card{rowTotal === 1 ? "" : "s"}</span>
-                </button>
+                </div>
 
                 {filteredColumns.map((column, columnIndex) => {
                   const cells = rowCards[columnIndex];
@@ -5601,7 +5641,7 @@ function BoardPage({
         <CreateItemModal
           categories={categories}
           clients={clients}
-          defaultSprint={selectedSprint?.name}
+          defaultSprint={sprintOfProject(createTargetProductId)?.name ?? selectedSprint?.name}
           members={projectRows.find((project) => project.id === createTargetProductId)?.members ?? rowMembers}
           mode="board"
           onClose={() => {
@@ -5833,8 +5873,10 @@ function getMovedCard(card: BoardCard, columns: BoardColumn[], sourceColumnIndex
   };
 }
 
-function mergeBoardColumnsWithSprintConnections(columns: BoardColumn[], sprintItems: BacklogItem[], sprintName?: string): BoardColumn[] {
-  if (!sprintName) {
+function mergeBoardColumnsWithSprintConnections(columns: BoardColumn[], sprintItems: BacklogItem[], sprintNames?: string | string[]): BoardColumn[] {
+  const names = Array.isArray(sprintNames) ? sprintNames : sprintNames ? [sprintNames] : [];
+
+  if (names.length === 0) {
     return columns;
   }
 
@@ -5849,7 +5891,7 @@ function mergeBoardColumnsWithSprintConnections(columns: BoardColumn[], sprintIt
     return columns;
   }
 
-  const selectedSprintItems = sprintItems.filter((item) => item.sprint === sprintName);
+  const selectedSprintItems = sprintItems.filter((item) => names.includes(item.sprint));
 
   if (selectedSprintItems.length === 0) {
     return columns;
