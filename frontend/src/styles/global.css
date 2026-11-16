@@ -6942,72 +6942,111 @@ input[type="checkbox"] {
   color: #b6ff5c;
 }
 
-/* ===== Board em matriz: colunas = abas, linhas = projetos ===== */
+/* ===== Board em matriz: projeto à esquerda, abas completas nas colunas ===== */
 .board-matrix {
-  --matrix-card-slot: 112px; /* altura média de um card + espaçamento */
+  --matrix-rail: 190px;
+  --matrix-col: 232px;
+  --matrix-line: #e1e1e1;
+  --matrix-surface: #f7f7f7;
+  --matrix-head: rgba(255, 255, 255, 0.92);
   display: grid;
-  gap: 10px;
   width: max-content;
   min-width: 100%;
-  padding: 0 0 12px;
+  padding: 0 0 14px;
 }
 
-.matrix-header,
-.matrix-cells {
+:root[data-theme="dark"] .board-matrix {
+  --matrix-line: #2c2c2c;
+  --matrix-surface: #151515;
+  --matrix-head: rgba(27, 27, 27, 0.92);
+}
+
+.matrix-grid {
   display: grid;
-  grid-template-columns: repeat(var(--matrix-columns), 220px);
+  grid-template-columns: var(--matrix-rail) repeat(var(--matrix-columns), var(--matrix-col));
   gap: 8px;
+  align-items: stretch;
+}
+
+.matrix-header {
+  padding-bottom: 6px;
+}
+
+.matrix-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--matrix-surface);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.65;
 }
 
 .matrix-column-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 46px;
   padding: 6px 10px;
-  border: 1px solid #e1e1e1;
+  border: 1px solid var(--matrix-line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--matrix-head);
 }
 
+/* o nome da aba aparece por inteiro (quebra em duas linhas se precisar) */
 .matrix-column-header h2 {
-  margin: 0;
-  overflow: hidden;
   flex: 1;
+  margin: 0;
   font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
+/* delimitação discreta de cada projeto: só um filete sob/ao redor das abas */
 .matrix-row {
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid #e1e1e1;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.6);
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--matrix-line);
 }
 
 .matrix-row-head {
+  position: sticky;
+  left: 0;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: start;
+  gap: 8px;
+  padding: 10px 12px;
   border: 0;
-  background: transparent;
+  border-left: 3px solid #8fff00;
+  border-radius: 6px;
+  background: var(--matrix-surface);
   color: inherit;
   text-align: left;
   cursor: pointer;
 }
 
+.matrix-row-head:hover {
+  background: var(--matrix-head);
+}
+
 .matrix-row-head strong {
-  font-size: 16px;
+  font-size: 15px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .matrix-chevron {
   flex: none;
+  opacity: 0.7;
   transition: transform 0.15s;
 }
 
@@ -7024,30 +7063,14 @@ input[type="checkbox"] {
   font-weight: 800;
 }
 
-.matrix-row-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.matrix-chip {
-  padding: 2px 8px;
-  border: 1px solid #e1e1e1;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  opacity: 0.85;
-}
-
 .matrix-cell.kanban-column {
   min-height: 140px;
   padding: 8px;
 }
 
-/* 10 cards visíveis na vertical; acima disso a célula rola */
+/* a altura máxima (10 cards) é medida em JS; o container é a referência de posição */
 .matrix-card-list {
-  max-height: calc(var(--matrix-card-slot) * 10);
-  overflow-y: auto;
+  position: relative;
   padding-right: 2px;
   overscroll-behavior: contain;
 }
@@ -7057,32 +7080,43 @@ input[type="checkbox"] {
   font-size: 14px;
 }
 
+/* projeto recolhido: uma faixa fina com a contagem de cada aba */
+.matrix-row.collapsed {
+  padding-top: 8px;
+}
+
+.matrix-collapsed-cell {
+  display: grid;
+  min-height: 34px;
+  place-items: center;
+  border: 1px dashed var(--matrix-line);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.matrix-collapsed-cell:has(span:empty),
+.matrix-collapsed-cell span {
+  opacity: 0.85;
+}
+
 .matrix-empty {
-  margin: 0;
+  margin: 10px 0 0;
   padding: 24px;
-  border: 1px dashed #e1e1e1;
+  border: 1px dashed var(--matrix-line);
   border-radius: 10px;
   text-align: center;
   opacity: 0.8;
 }
 
-:root[data-theme="dark"] .matrix-column-header {
-  border-color: #353535;
-  background: rgba(27, 27, 27, 0.9);
+/* projeto recolhido fica compacto: nome e contagem na mesma linha */
+.matrix-row.collapsed .matrix-row-head {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
 }
 
-:root[data-theme="dark"] .matrix-row {
-  border-color: #353535;
-  background: rgba(24, 24, 24, 0.75);
-}
-
-:root[data-theme="dark"] .matrix-chip,
-:root[data-theme="dark"] .matrix-empty {
-  border-color: #353535;
-}
-
-/* a altura máxima (10 cards) é medida em JS; o container precisa ser a referência de posição */
-.matrix-card-list {
-  position: relative;
-  max-height: none;
+.matrix-row.collapsed .matrix-collapsed-cell {
+  align-self: center;
 }

@@ -5349,7 +5349,8 @@ function BoardPage({
 
       <DualHorizontalScroll className="board-scroll-frame">
         <section className="board-matrix" aria-label="Board da sprint por projeto" style={{ "--matrix-columns": filteredColumns.length } as CSSProperties}>
-          <div className="matrix-header" role="row">
+          <div className="matrix-grid matrix-header" role="row">
+            <div className="matrix-corner" role="columnheader">Projetos</div>
             {filteredColumns.map((column) => (
               <header className={`matrix-column-header ${column.color}`} key={column.title} role="columnheader">
                 <span className={`column-icon ${column.color}`}>
@@ -5372,73 +5373,74 @@ function BoardPage({
             const rowTotal = rowCards.reduce((total, cards) => total + cards.length, 0);
 
             return (
-              <section className={`matrix-row ${isCollapsed ? "collapsed" : ""}`} key={project.id} aria-label={`Projeto ${project.name}`}>
+              <section
+                aria-label={`Projeto ${project.name}`}
+                className={`matrix-grid matrix-row ${isCollapsed ? "collapsed" : ""}`}
+                key={project.id}
+              >
                 <button
                   aria-expanded={!isCollapsed}
                   className="matrix-row-head"
                   onClick={() => toggleProject(project.id)}
+                  title={isCollapsed ? "Ampliar projeto" : "Reduzir projeto"}
                   type="button"
                 >
                   <ChevronDown className="matrix-chevron" size={18} />
                   <strong>{project.name}</strong>
                   <span className="matrix-row-count">{rowTotal} card{rowTotal === 1 ? "" : "s"}</span>
-                  {isCollapsed && (
-                    <span className="matrix-row-summary">
-                      {filteredColumns.map((column, columnIndex) => (
-                        <span className={`matrix-chip ${column.color}`} key={column.title} title={column.title}>
-                          {column.title}: {rowCards[columnIndex].length}
-                        </span>
-                      ))}
-                    </span>
-                  )}
                 </button>
 
-                {!isCollapsed && (
-                  <div className="matrix-cells">
-                    {filteredColumns.map((column, columnIndex) => {
-                      const cells = rowCards[columnIndex];
-                      const endIndex = cells.length ? cells[cells.length - 1].cardIndex + 1 : visibleColumns[columnIndex]?.cards.length ?? column.cards.length;
+                {filteredColumns.map((column, columnIndex) => {
+                  const cells = rowCards[columnIndex];
 
-                      return (
-                        <article
-                          className={`kanban-column matrix-cell ${column.color}`}
-                          key={column.title}
-                          onDragOver={handleDragOver}
-                          onDrop={(event) => handleDrop(event, columnIndex, endIndex, project.id)}
-                        >
-                          <MatrixCardList count={cells.length}>
-                            {cells.map(({ card, cardIndex }) => (
-                              <BoardCardItem
-                                card={card}
-                                isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
-                                key={card.id}
-                                onDragEnd={() => setDraggedCard(null)}
-                                onDragOver={handleDragOver}
-                                onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
-                                onDrop={(event) => handleDrop(event, columnIndex, cardIndex, project.id)}
-                                onOpenDetails={() => openBoardCardDetails(card, columnIndex, cardIndex, column.title)}
-                                onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
-                              />
-                            ))}
-                          </MatrixCardList>
+                  if (isCollapsed) {
+                    return (
+                      <div className={`matrix-collapsed-cell ${column.color}`} key={column.title} title={`${column.title}: ${cells.length}`}>
+                        <span>{cells.length}</span>
+                      </div>
+                    );
+                  }
 
-                          <button
-                            aria-label={`Adicionar card em ${column.title} (${project.name})`}
-                            className="add-card-button"
-                            onClick={() => {
-                              setCreateTargetColumnIndex(columnIndex);
-                              setCreateTargetProductId(project.id);
-                            }}
-                            type="button"
-                          >
-                            <Plus size={17} />
-                            Adicionar card
-                          </button>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
+                  const endIndex = cells.length ? cells[cells.length - 1].cardIndex + 1 : visibleColumns[columnIndex]?.cards.length ?? column.cards.length;
+
+                  return (
+                    <article
+                      className={`kanban-column matrix-cell ${column.color}`}
+                      key={column.title}
+                      onDragOver={handleDragOver}
+                      onDrop={(event) => handleDrop(event, columnIndex, endIndex, project.id)}
+                    >
+                      <MatrixCardList count={cells.length}>
+                        {cells.map(({ card, cardIndex }) => (
+                          <BoardCardItem
+                            card={card}
+                            isDragging={draggedCard?.columnIndex === columnIndex && draggedCard.cardIndex === cardIndex}
+                            key={card.id}
+                            onDragEnd={() => setDraggedCard(null)}
+                            onDragOver={handleDragOver}
+                            onDragStart={(event) => handleDragStart(event, columnIndex, cardIndex)}
+                            onDrop={(event) => handleDrop(event, columnIndex, cardIndex, project.id)}
+                            onOpenDetails={() => openBoardCardDetails(card, columnIndex, cardIndex, column.title)}
+                            onRequestDelete={() => setDeleteTarget({ columnIndex, cardIndex, title: card.title })}
+                          />
+                        ))}
+                      </MatrixCardList>
+
+                      <button
+                        aria-label={`Adicionar card em ${column.title} (${project.name})`}
+                        className="add-card-button"
+                        onClick={() => {
+                          setCreateTargetColumnIndex(columnIndex);
+                          setCreateTargetProductId(project.id);
+                        }}
+                        type="button"
+                      >
+                        <Plus size={17} />
+                        Adicionar card
+                      </button>
+                    </article>
+                  );
+                })}
               </section>
             );
           })}
