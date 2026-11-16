@@ -791,7 +791,7 @@ export function App() {
   const skipNextWorkspaceSaveRef = useRef(false);
   const [theme, setTheme] = useState<Theme>(() => {
     const storedTheme = window.localStorage.getItem("toolz-theme");
-    return storedTheme === "dark" ? "dark" : "light";
+    return storedTheme === "light" ? "light" : "dark";
   });
 
   useEffect(() => {
@@ -2447,12 +2447,12 @@ function RollbackChart() {
             <XAxis dataKey="date" tick={{ fill: "#657187", fontSize: 12 }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fill: "#657187", fontSize: 12 }} tickLine={false} axisLine={false} width={34} />
             <Tooltip contentStyle={{ border: "1px solid #e1e6ef", borderRadius: 8, boxShadow: "0 12px 28px rgba(31, 47, 73, 0.12)" }} />
-            <Line type="monotone" dataKey="backlog" name="Backlog" stroke="#7a5af8" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-            <Line type="monotone" dataKey="board" name="Board" stroke="#17b26a" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey="backlog" name="Backlog" stroke="#8fff00" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey="board" name="Board" stroke="#06aed4" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="chart-legend"><span><i style={{ background: "#7a5af8" }} />Backlog</span><span><i style={{ background: "#17b26a" }} />Board</span></div>
+      <div className="chart-legend"><span><i style={{ background: "#8fff00" }} />Backlog</span><span><i style={{ background: "#06aed4" }} />Board</span></div>
     </article>
   );
 }
