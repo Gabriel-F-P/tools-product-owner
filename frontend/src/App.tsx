@@ -66,6 +66,8 @@ import type { Meeting, Topic } from "./meetings/types";
 
 type Page = "dashboard" | "backlog" | "board" | "sprints" | "reports" | "ceremonies" | "meetings" | "calendar" | "permissions";
 type Theme = "light" | "dark";
+type ProjectMethod = "sprint" | "kanban";
+const projectMethodLabel: Record<ProjectMethod, string> = { sprint: "Sprint", kanban: "Kanban" };
 type ViewMode = "card" | "list";
 type UserPermission = "Membro" | "Admin";
 type LinearCreateAction = "none" | "link" | "create";
@@ -156,6 +158,8 @@ interface ClientAccount {
 }
 
 interface ProductAccess {
+  /** Método de trabalho do projeto: sprint ou kanban. */
+  method?: ProjectMethod;
   id: string;
   name: string;
   members: ProductMember[];
@@ -1241,7 +1245,7 @@ function LoginPage({ onLogin }: { onLogin: (email: string) => void }) {
           <strong>Toolz.me</strong>
         </div>
         <h1>{mode === "login" ? "Entrar na plataforma" : "Recuperar senha"}</h1>
-        <p>{mode === "login" ? "Acesse seus produtos, boards, sprints e cerimonias." : "Informe seu e-mail para receber as instrucoes de redefinicao."}</p>
+        <p>{mode === "login" ? "Acesse seus projetos, boards, sprints e cerimonias." : "Informe seu e-mail para receber as instrucoes de redefinicao."}</p>
         <form onSubmit={handleSubmit}>
           <label>
             <span>E-mail</span>
@@ -1272,7 +1276,8 @@ function PermissionsPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme
   function createProduct() {
     const product: ProductAccess = {
       id: `product-${Date.now()}`,
-      name: `Novo produto ${products.length + 1}`,
+      name: `Novo projeto ${products.length + 1}`,
+      method: "sprint",
       members: [{ id: `member-${Date.now()}`, name: "Amanda Silva", email: "amanda@toolz.me", permission: "Admin" }]
     };
     onProductsChange([...products, product]);
@@ -1297,7 +1302,7 @@ function PermissionsPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme
       return;
     }
     updateProduct(selectedProduct.id, {
-      members: [...selectedProduct.members, { id: `member-${Date.now()}`, name: "Novo membro", email: "membro@produto.com", permission: "Membro" }]
+      members: [...selectedProduct.members, { id: `member-${Date.now()}`, name: "Novo membro", email: "membro@projeto.com", permission: "Membro" }]
     });
   }
 
@@ -1307,11 +1312,11 @@ function PermissionsPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme
 
   return (
     <main className="dashboard permissions-page">
-      <Topbar title="Permissoes" subtitle="Crie produtos e gerencie pessoas e permissoes por produto." theme={theme} onToggleTheme={onToggleTheme} />
+      <Topbar title="Projetos" subtitle="Crie projetos, defina o método e gerencie pessoas e permissões por projeto." theme={theme} onToggleTheme={onToggleTheme} />
       <section className="permissions-layout">
         <aside className="permissions-products">
           <header>
-            <h2>Produtos</h2>
+            <h2>Projetos</h2>
             <button type="button" onClick={createProduct}><Plus size={16} /></button>
           </header>
           {products.map((product) => (
@@ -1323,12 +1328,22 @@ function PermissionsPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme
         </aside>
         <section className="permissions-panel">
           <label>
-            <span>Nome do produto</span>
+            <span>Nome do projeto</span>
             <input value={selectedProduct.name} onChange={(event) => updateProduct(selectedProduct.id, { name: event.target.value })} />
+          </label>
+          <label>
+            <span>Método</span>
+            <select
+              value={selectedProduct.method ?? "sprint"}
+              onChange={(event) => updateProduct(selectedProduct.id, { method: event.target.value as ProjectMethod })}
+            >
+              <option value="sprint">{projectMethodLabel.sprint}</option>
+              <option value="kanban">{projectMethodLabel.kanban}</option>
+            </select>
           </label>
           <header className="permissions-members-header">
             <div>
-              <h2>Pessoas no produto</h2>
+              <h2>Pessoas no projeto</h2>
               <p>Defina quem participa e se a permissao e de Membro ou Admin.</p>
             </div>
             <button className="primary-button" type="button" onClick={addMember}><Plus size={16} />Adicionar pessoa</button>
@@ -2783,6 +2798,7 @@ function DualHorizontalScroll({ children, className = "" }: { children: ReactNod
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
   const isSyncingScroll = useRef(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
 
   useEffect(() => {
     const contentScroll = contentScrollRef.current;
@@ -2794,6 +2810,8 @@ function DualHorizontalScroll({ children, className = "" }: { children: ReactNod
 
     const updateScrollWidth = () => {
       spacer.style.width = `${contentScroll.scrollWidth}px`;
+      // A barra superior só aparece quando o conteúdo ultrapassa a largura da tela.
+      setIsOverflowing(contentScroll.scrollWidth > contentScroll.clientWidth + 1);
     };
 
     updateScrollWidth();
@@ -2824,7 +2842,12 @@ function DualHorizontalScroll({ children, className = "" }: { children: ReactNod
 
   return (
     <div className={`dual-scroll-frame ${className}`}>
-      <div className="dual-scrollbar top" ref={topScrollRef} onScroll={(event) => syncScroll(event.currentTarget, contentScrollRef.current)}>
+      <div
+        className="dual-scrollbar top"
+        ref={topScrollRef}
+        style={isOverflowing ? undefined : { display: "none" }}
+        onScroll={(event) => syncScroll(event.currentTarget, contentScrollRef.current)}
+      >
         <div ref={spacerRef} />
       </div>
       <div className="dual-scroll-content" ref={contentScrollRef} onScroll={(event) => syncScroll(event.currentTarget, topScrollRef.current)}>
@@ -3282,6 +3305,7 @@ function BacklogPage({
                       >
                         <ChevronDown className="matrix-chevron" size={18} />
                         <strong>{project.name}</strong>
+                        <span className={`matrix-method-tag ${project.method ?? "sprint"}`}>{projectMethodLabel[project.method ?? "sprint"]}</span>
                         <span className="matrix-row-count">{rowTotal} item{rowTotal === 1 ? "" : "s"}</span>
                       </button>
 
@@ -5423,11 +5447,6 @@ function BoardPage({
         </div>
       </section>
 
-      <div className="board-callout">
-        <span>i</span>
-        Arraste e solte os cards para definir a ordem de prioridade para o desenvolvimento.
-      </div>
-
       {integrationNotice && (
         <div className={`info-callout integration-notice ${integrationNotice.tone}`}>
           <span>{integrationNotice.tone === "success" ? "OK" : "!"}</span>
@@ -5475,6 +5494,7 @@ function BoardPage({
                 >
                   <ChevronDown className="matrix-chevron" size={18} />
                   <strong>{project.name}</strong>
+                  <span className={`matrix-method-tag ${project.method ?? "sprint"}`}>{projectMethodLabel[project.method ?? "sprint"]}</span>
                   <span className="matrix-row-count">{rowTotal} card{rowTotal === 1 ? "" : "s"}</span>
                 </button>
 
@@ -5536,12 +5556,6 @@ function BoardPage({
       </DualHorizontalScroll>
 
       <footer className="board-footer">
-        <div className="priority-legend">
-          <span>Prioridade:</span>
-          <span className="legend-item high"><ArrowUp size={16} />Alta</span>
-          <span className="legend-item medium"><span />Media</span>
-          <span className="legend-item low"><ArrowDown size={16} />Baixa</span>
-        </div>
         <div className="board-summary">
           <span>Total de itens: {totalItems}</span>
           <button className="secondary-button" type="button">
@@ -7377,7 +7391,7 @@ function Topbar({
             </div>
             {isAdmin && (
               <button type="button" onClick={() => { onNavigate("permissions"); setIsProfileOpen(false); }}>
-                Permissoes
+                Projetos
               </button>
             )}
             <button className="profile-logout" type="button" onClick={onLogout}>Logout</button>
