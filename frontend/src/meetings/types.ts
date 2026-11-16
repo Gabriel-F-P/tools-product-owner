@@ -41,14 +41,17 @@ export interface Meeting {
   /** AAAA-MM-DD */
   date: string;
   memberEmails: string[];
-  status: "in_progress" | "finished";
+  /** scheduled = agendada para depois; in_progress = acontecendo; finished = no histórico. */
+  status: "scheduled" | "in_progress" | "finished";
+  /** Pautas (uma por linha). */
+  agenda?: string;
   /** HTML do editor. */
   content: string;
   /** Tópicos pendentes no momento em que a reunião começou. */
   topicIds: string[];
   results: MeetingTopicResult[];
   createdAt: string;
-  startedAt: string;
+  startedAt?: string;
   finishedAt?: string;
   createdBy: string;
 }
@@ -88,3 +91,24 @@ export function htmlToText(html: string) {
 export function pendingTopicsForNextMeeting(topics: Topic[]) {
   return topics.filter((t) => t.status !== "resolved" && t.presentOn === "next");
 }
+
+export function agendaLines(agenda?: string) {
+  return (agenda ?? "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*[-•*]\s*/, "").trim())
+    .filter(Boolean);
+}
+
+/** Inicia uma reunião (agendada ou nova): captura os tópicos pendentes naquele momento. */
+export function beginMeeting(meeting: Meeting, topics: Topic[]): Meeting {
+  return {
+    ...meeting,
+    status: "in_progress",
+    startedAt: new Date().toISOString(),
+    topicIds: pendingTopicsForNextMeeting(topics).map((topic) => topic.id),
+    results: []
+  };
+}
+
+export const statusLabel = (status: Meeting["status"]) =>
+  status === "finished" ? "Finalizada" : status === "scheduled" ? "Agendada" : "Em andamento";

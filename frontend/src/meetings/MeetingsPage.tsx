@@ -1,25 +1,32 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, CalendarDays, CheckSquare, Clock, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckSquare, Clock, Pencil, Play, Plus, Search, Trash2, X } from "lucide-react";
 import { MeetingRoom } from "./MeetingRoom";
 import { RichEditor } from "./RichEditor";
 import { ConfirmModal, Modal } from "./ui";
 import {
+  agendaLines,
+  beginMeeting,
   defaultMeetingTitle,
   formatDate,
   formatDateTime,
   htmlToText,
   newId,
-  pendingTopicsForNextMeeting
+  pendingTopicsForNextMeeting,
+  statusLabel
 } from "./types";
 import type { MemberLite, Meeting, Topic, TopicPresent } from "./types";
 import "./meetings.css";
 
 type Tab = "history" | "topics";
 type View = { kind: "list" } | { kind: "detail"; id: string } | { kind: "room"; id: string };
+export type MeetingFocus = { id: string; mode: "room" | "detail" } | null;
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+const tomorrowIso = () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const presentLabel = (value: TopicPresent) => (value === "next" ? "Próxima reunião" : "Indefinido");
+
+type NewMeetingInput = { title: string; agenda: string; memberEmails: string[]; date: string };
 
 export function MeetingsPage({
   topbar,
@@ -27,6 +34,8 @@ export function MeetingsPage({
   currentMember,
   meetings,
   topics,
+  focus,
+  onFocusConsumed,
   onMeetingsChange,
   onTopicsChange
 }: {
@@ -35,12 +44,22 @@ export function MeetingsPage({
   currentMember?: MemberLite;
   meetings: Meeting[];
   topics: Topic[];
+  /** Reunião a abrir ao entrar na página (vem do Calendário). */
+  focus?: MeetingFocus;
+  onFocusConsumed?: () => void;
   onMeetingsChange: (meetings: Meeting[]) => void;
   onTopicsChange: (topics: Topic[]) => void;
 }) {
   const [tab, setTab] = useState<Tab>("history");
-  const [view, setView] = useState<View>({ kind: "list" });
+  const [view, setView] = useState<View>(() => (focus ? { kind: focus.mode, id: focus.id } : { kind: "list" }));
   const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
+
+  useEffect(() => {
+    if (focus) {
+      onFocusConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const nameOf = (email: string) => members.find((member) => member.email === email)?.name ?? email;
 
@@ -48,31 +67,37 @@ export function MeetingsPage({
     onMeetingsChange(meetings.map((meeting) => (meeting.id === next.id ? next : meeting)));
   }
 
-  function startMeeting(input: { date: string; title: string; memberEmails: string[] }) {
+  function createMeeting(input: NewMeetingInput, mode: "now" | "later") {
     const now = new Date().toISOString();
-    const meeting: Meeting = {
+    const base: Meeting = {
       id: newId(),
       title: input.title.trim() || defaultMeetingTitle(input.date),
       date: input.date,
       memberEmails: input.memberEmails,
-      status: "in_progress",
+      status: "scheduled",
+      agenda: input.agenda.trim(),
       content: "",
-      topicIds: pendingTopicsForNextMeeting(topics).map((topic) => topic.id),
+      topicIds: [],
       results: [],
       createdAt: now,
-      startedAt: now,
       createdBy: currentMember?.email ?? ""
     };
+    const meeting = mode === "now" ? beginMeeting(base, topics) : base;
 
     onMeetingsChange([meeting, ...meetings]);
     setIsCreatingMeeting(false);
+    setView(mode === "now" ? { kind: "room", id: meeting.id } : { kind: "detail", id: meeting.id });
+  }
+
+  function startScheduled(meeting: Meeting) {
+    updateMeeting(beginMeeting(meeting, topics));
     setView({ kind: "room", id: meeting.id });
   }
 
   const roomMeeting = view.kind === "room" ? meetings.find((meeting) => meeting.id === view.id) : undefined;
   const detailMeeting = view.kind === "detail" ? meetings.find((meeting) => meeting.id === view.id) : undefined;
 
-  if (roomMeeting) {
+  if (roomMeeting && roomMeeting.status === "in_progress") {
     return (
       <main className="dashboard meetings-page mt">
         <MeetingRoom
@@ -87,13 +112,20 @@ export function MeetingsPage({
     );
   }
 
-  if (detailMeeting) {
+  if (detailMeeting || roomMeeting) {
+    const meeting = (detailMeeting ?? roomMeeting)!;
+
     return (
       <main className="dashboard meetings-page mt">
         <MeetingDetail
-          meeting={detailMeeting}
+          meeting={meeting}
           nameOf={nameOf}
           onBack={() => setView({ kind: "list" })}
+          onDelete={() => {
+            onMeetingsChange(meetings.filter((item) => item.id !== meeting.id));
+            setView({ kind: "list" });
+          }}
+          onStart={() => startScheduled(meeting)}
           topics={topics}
         />
       </main>
@@ -122,7 +154,7 @@ export function MeetingsPage({
           <HistoryTab
             meetings={meetings}
             nameOf={nameOf}
-            onOpen={(meeting) => setView({ kind: meeting.status === "finished" ? "detail" : "room", id: meeting.id })}
+            onOpen={(meeting) => setView({ kind: meeting.status === "in_progress" ? "room" : "detail", id: meeting.id })}
             topics={topics}
           />
         )}
@@ -142,7 +174,7 @@ export function MeetingsPage({
           currentEmail={currentMember?.email}
           members={members}
           onClose={() => setIsCreatingMeeting(false)}
-          onStart={startMeeting}
+          onSubmit={createMeeting}
           pendingCount={pendingTopicsForNextMeeting(topics).length}
         />
       )}
@@ -182,7 +214,8 @@ function HistoryTab({
           htmlToText(meeting.content),
           ...meeting.memberEmails.map(nameOf),
           ...meeting.topicIds.map((id) => topics.find((topic) => topic.id === id)?.title ?? ""),
-          ...meeting.results.map((result) => result.note ?? "")
+          ...meeting.results.map((result) => result.note ?? ""),
+          ...agendaLines(meeting.agenda)
         ]
           .join(" ")
           .toLowerCase();
@@ -223,7 +256,7 @@ function HistoryTab({
         {rows.map((meeting) => {
           const resolved = meeting.results.filter((result) => result.outcome === "resolved").length;
           const postponed = meeting.results.filter((result) => result.outcome === "postponed").length;
-          const snippet = htmlToText(meeting.content);
+          const snippet = htmlToText(meeting.content) || agendaLines(meeting.agenda).join(" · ");
 
           return (
             <li key={meeting.id}>
@@ -238,8 +271,10 @@ function HistoryTab({
                   {snippet && <em>{snippet.slice(0, 160)}{snippet.length > 160 ? "…" : ""}</em>}
                 </span>
                 <span className="mt-meeting-meta">
-                  <span className={`mt-chip ${meeting.status}`}>{meeting.status === "finished" ? "Finalizada" : "Em andamento"}</span>
-                  <small>{resolved} resolvido{resolved === 1 ? "" : "s"} · {postponed} adiado{postponed === 1 ? "" : "s"}</small>
+                  <span className={`mt-chip ${meeting.status}`}>{statusLabel(meeting.status)}</span>
+                  {meeting.status !== "scheduled" && (
+                    <small>{resolved} resolvido{resolved === 1 ? "" : "s"} · {postponed} adiado{postponed === 1 ? "" : "s"}</small>
+                  )}
                 </span>
               </button>
             </li>
@@ -254,13 +289,21 @@ function MeetingDetail({
   meeting,
   topics,
   nameOf,
-  onBack
+  onBack,
+  onStart,
+  onDelete
 }: {
   meeting: Meeting;
   topics: Topic[];
   nameOf: (email: string) => string;
   onBack: () => void;
+  onStart: () => void;
+  onDelete: () => void;
 }) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const agenda = agendaLines(meeting.agenda);
+  const isScheduled = meeting.status === "scheduled";
+
   return (
     <div className="mt-detail">
       <header className="mt-room-header">
@@ -270,52 +313,98 @@ function MeetingDetail({
         <div className="mt-room-title static">
           <h1>{meeting.title}</h1>
           <span>
-            {formatDate(meeting.date)} · {meeting.memberEmails.map(nameOf).join(", ") || "Sem participantes"}
+            {statusLabel(meeting.status)} · {formatDate(meeting.date)} · {meeting.memberEmails.map(nameOf).join(", ") || "Sem participantes"}
             {meeting.finishedAt ? ` · finalizada em ${formatDateTime(meeting.finishedAt)}` : ""}
           </span>
         </div>
+        {isScheduled && (
+          <div className="mt-header-actions">
+            <button className="mt-btn ghost" onClick={() => setIsDeleting(true)} type="button">
+              <Trash2 size={16} /> Excluir
+            </button>
+            <button className="mt-btn primary" onClick={onStart} type="button">
+              <Play size={16} /> Iniciar reunião
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="mt-detail-body">
-        <section className="mt-detail-notes">
-          <h2>Anotações</h2>
-          <RichEditor key={meeting.id} readOnly value={meeting.content || "<p><em>Sem anotações.</em></p>"} />
-        </section>
+        <div className="mt-detail-main">
+          {agenda.length > 0 && (
+            <section className="mt-detail-notes">
+              <h2>Pautas</h2>
+              <ul className="mt-agenda-list">
+                {agenda.map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-        <aside className="mt-detail-topics">
-          <h2>Tópicos da reunião</h2>
-          {meeting.topicIds.length === 0 && <p className="mt-empty">Nenhum tópico pendente nesta reunião.</p>}
-          <ul className="mt-agenda">
-            {meeting.topicIds.map((id) => {
-              const topic = topics.find((item) => item.id === id);
-              const result = meeting.results.find((entry) => entry.topicId === id);
+          {!isScheduled && (
+            <section className="mt-detail-notes">
+              <h2>Anotações</h2>
+              <RichEditor key={meeting.id} readOnly value={meeting.content || "<p><em>Sem anotações.</em></p>"} />
+            </section>
+          )}
 
-              return (
-                <li className={`mt-agenda-item ${result?.outcome ?? ""}`} key={id}>
-                  <div className="mt-agenda-head">
-                    {result?.outcome === "resolved" ? (
-                      <span className="mt-check done"><CheckSquare size={20} /></span>
-                    ) : (
-                      <span className="mt-check postponed"><Clock size={20} /></span>
-                    )}
-                    <div>
-                      <strong>{topic?.title ?? "Tópico removido"}</strong>
-                      <small>Responsável: {topic?.ownerName ?? "—"}</small>
+          {isScheduled && (
+            <section className="mt-detail-notes">
+              <h2>Membros</h2>
+              <p className="mt-agenda-people">{meeting.memberEmails.map(nameOf).join(", ") || "Sem participantes"}</p>
+              <p className="mt-hint">As anotações ficam disponíveis quando a reunião for iniciada.</p>
+            </section>
+          )}
+        </div>
+
+        {!isScheduled && (
+          <aside className="mt-detail-topics">
+            <h2>Tópicos da reunião</h2>
+            {meeting.topicIds.length === 0 && <p className="mt-empty">Nenhum tópico pendente nesta reunião.</p>}
+            <ul className="mt-agenda">
+              {meeting.topicIds.map((id) => {
+                const topic = topics.find((item) => item.id === id);
+                const result = meeting.results.find((entry) => entry.topicId === id);
+
+                return (
+                  <li className={`mt-agenda-item ${result?.outcome ?? ""}`} key={id}>
+                    <div className="mt-agenda-head">
+                      {result?.outcome === "resolved" ? (
+                        <span className="mt-check done"><CheckSquare size={20} /></span>
+                      ) : (
+                        <span className="mt-check postponed"><Clock size={20} /></span>
+                      )}
+                      <div>
+                        <strong>{topic?.title ?? "Tópico removido"}</strong>
+                        <small>Responsável: {topic?.ownerName ?? "—"}</small>
+                      </div>
                     </div>
-                  </div>
-                  {result?.outcome === "resolved" && <p className="mt-agenda-result"><b>Resolução:</b> {result.note || "—"}</p>}
-                  {result?.outcome === "postponed" && (
-                    <p className="mt-agenda-result">
-                      <b>Adiado</b> para {result.postponeTo === "undefined" ? "data indefinida" : "a próxima reunião"}
-                      {result.auto ? " (automático ao finalizar)" : ""}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </aside>
+                    {result?.outcome === "resolved" && <p className="mt-agenda-result"><b>Resolução:</b> {result.note || "—"}</p>}
+                    {result?.outcome === "postponed" && (
+                      <p className="mt-agenda-result">
+                        <b>Adiado</b> para {result.postponeTo === "undefined" ? "data indefinida" : "a próxima reunião"}
+                        {result.auto ? " (automático ao finalizar)" : ""}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+        )}
       </div>
+
+      {isDeleting && (
+        <ConfirmModal
+          confirmLabel="Excluir"
+          danger
+          message={<>A reunião agendada <strong>{meeting.title}</strong> será excluída.</>}
+          onCancel={() => setIsDeleting(false)}
+          onConfirm={onDelete}
+          title="Excluir reunião agendada"
+        />
+      )}
     </div>
   );
 }
@@ -327,22 +416,40 @@ function NewMeetingModal({
   currentEmail,
   pendingCount,
   onClose,
-  onStart
+  onSubmit
 }: {
   members: MemberLite[];
   currentEmail?: string;
   pendingCount: number;
   onClose: () => void;
-  onStart: (input: { date: string; title: string; memberEmails: string[] }) => void;
+  onSubmit: (input: NewMeetingInput, mode: "now" | "later") => void;
 }) {
-  const [date, setDate] = useState(todayIso());
+  const [mode, setMode] = useState<"now" | "later">("now");
   const [title, setTitle] = useState("");
+  const [agenda, setAgenda] = useState("");
   const [selected, setSelected] = useState<string[]>(currentEmail ? [currentEmail] : []);
+  const [date, setDate] = useState(todayIso());
+  const [dateTouched, setDateTouched] = useState(false);
   const [error, setError] = useState("");
+  const isLater = mode === "later";
+
+  function changeMode(next: "now" | "later") {
+    setMode(next);
+    setError("");
+
+    if (!dateTouched) {
+      setDate(next === "later" ? tomorrowIso() : todayIso());
+    }
+  }
 
   function submit() {
-    if (!date) {
-      setError("Informe o dia da reunião.");
+    if (!title.trim()) {
+      setError("O título é obrigatório.");
+      return;
+    }
+
+    if (isLater && agendaLines(agenda).length === 0) {
+      setError("Informe as pautas da reunião.");
       return;
     }
 
@@ -351,7 +458,12 @@ function NewMeetingModal({
       return;
     }
 
-    onStart({ date, title, memberEmails: selected });
+    if (!date) {
+      setError("Informe o dia da reunião.");
+      return;
+    }
+
+    onSubmit({ title, agenda, memberEmails: selected, date }, mode);
   }
 
   return (
@@ -359,21 +471,35 @@ function NewMeetingModal({
       footer={
         <>
           <button className="mt-btn ghost" onClick={onClose} type="button">Cancelar</button>
-          <button className="mt-btn primary" onClick={submit} type="button">Iniciar reunião</button>
+          <button className="mt-btn primary" onClick={submit} type="button">{isLater ? "Agendar reunião" : "Iniciar reunião"}</button>
         </>
       }
       onClose={onClose}
       title="Nova reunião"
     >
       <div className="mt-form">
+        <div className="mt-segment mt-segment-full" role="radiogroup" aria-label="Quando iniciar">
+          <button aria-checked={!isLater} className={!isLater ? "active" : ""} onClick={() => changeMode("now")} role="radio" type="button">
+            Iniciar agora
+          </button>
+          <button aria-checked={isLater} className={isLater ? "active" : ""} onClick={() => changeMode("later")} role="radio" type="button">
+            Iniciar depois
+          </button>
+        </div>
+
         <label className="mt-field">
-          Dia da reunião *
-          <input onChange={(event) => setDate(event.target.value)} type="date" value={date} />
+          Título *
+          <input autoFocus onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Alinhamento semanal" value={title} />
         </label>
 
         <label className="mt-field">
-          Título (opcional)
-          <input onChange={(event) => setTitle(event.target.value)} placeholder={defaultMeetingTitle(date || todayIso())} value={title} />
+          Pautas {isLater ? "*" : "(opcional)"}
+          <textarea
+            onChange={(event) => setAgenda(event.target.value)}
+            placeholder="Uma pauta por linha"
+            rows={4}
+            value={agenda}
+          />
         </label>
 
         <fieldset className="mt-field">
@@ -396,10 +522,26 @@ function NewMeetingModal({
           </div>
         </fieldset>
 
+        <label className="mt-field">
+          Dia da reunião *
+          <input
+            onChange={(event) => {
+              setDate(event.target.value);
+              setDateTouched(true);
+            }}
+            type="date"
+            value={date}
+          />
+        </label>
+
         <p className="mt-hint">
-          {pendingCount > 0
-            ? (pendingCount === 1 ? "1 tópico pendente será levado para esta reunião." : `${pendingCount} tópicos pendentes serão levados para esta reunião.`)
-            : "Não há tópicos pendentes para esta reunião."}
+          {isLater
+            ? "A reunião ficará agendada no Calendário e poderá ser iniciada depois. Os tópicos pendentes serão levados quando ela começar."
+            : pendingCount > 0
+              ? pendingCount === 1
+                ? "1 tópico pendente será levado para esta reunião."
+                : `${pendingCount} tópicos pendentes serão levados para esta reunião.`
+              : "Não há tópicos pendentes para esta reunião."}
         </p>
         {error && <p className="mt-error" role="alert">{error}</p>}
       </div>

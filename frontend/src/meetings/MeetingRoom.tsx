@@ -2,10 +2,10 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, CheckSquare, Clock, Square } from "lucide-react";
 import { RichEditor } from "./RichEditor";
 import { ConfirmModal } from "./ui";
-import { formatDate, formatDateTime } from "./types";
+import { agendaLines, defaultMeetingTitle, formatDate, formatDateTime } from "./types";
 import type { MemberLite, Meeting, MeetingTopicResult, Topic, TopicPresent } from "./types";
 
-type SidePanel = "topics" | "people";
+type SidePanel = "topics" | "agenda" | "people";
 
 /**
  * Tela da reunião em andamento: editor de texto rico + painel de tópicos pendentes.
@@ -36,6 +36,7 @@ export function MeetingRoom({
   );
   const resultOf = (topicId: string) => meeting.results.find((result) => result.topicId === topicId);
   const unanswered = agenda.filter((topic) => !resultOf(topic.id)?.outcome);
+  const agendaItems = agendaLines(meeting.agenda);
   const participants = meeting.memberEmails.map((email) => members.find((member) => member.email === email)?.name ?? email);
 
   /** Registra a resposta de um tópico no tópico e na reunião. */
@@ -119,6 +120,12 @@ export function MeetingRoom({
         <div className="mt-room-title">
           <input
             aria-label="Título da reunião"
+            onBlur={() => {
+              // O título é obrigatório: se ficar vazio, volta para o padrão.
+              if (!meeting.title.trim()) {
+                onMeetingChange({ ...meeting, title: defaultMeetingTitle(meeting.date) });
+              }
+            }}
             onChange={(event) => onMeetingChange({ ...meeting, title: event.target.value })}
             value={meeting.title}
           />
@@ -147,10 +154,24 @@ export function MeetingRoom({
             <button aria-selected={panel === "topics"} className={panel === "topics" ? "active" : ""} onClick={() => setPanel("topics")} role="tab" type="button">
               Tópicos pendentes <span className="mt-count">{unanswered.length}</span>
             </button>
+            <button aria-selected={panel === "agenda"} className={panel === "agenda" ? "active" : ""} onClick={() => setPanel("agenda")} role="tab" type="button">
+              Pautas <span className="mt-count">{agendaItems.length}</span>
+            </button>
             <button aria-selected={panel === "people"} className={panel === "people" ? "active" : ""} onClick={() => setPanel("people")} role="tab" type="button">
               Participantes
             </button>
           </div>
+
+          {panel === "agenda" && (
+            <div className="mt-agenda">
+              {agendaItems.length === 0 && <p className="mt-empty">Nenhuma pauta informada para esta reunião.</p>}
+              <ul className="mt-agenda-list">
+                {agendaItems.map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {panel === "people" && (
             <ul className="mt-people">

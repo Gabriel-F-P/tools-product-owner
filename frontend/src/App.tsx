@@ -58,10 +58,13 @@ import type { UpdateIssueResult } from "./services/backlog";
 import { apiUrl } from "./services/api";
 import { getDashboard } from "./services/dashboard";
 import { mockDashboard } from "./services/mockDashboard";
+import { CalendarPage } from "./meetings/CalendarPage";
 import { MeetingsPage } from "./meetings/MeetingsPage";
+import type { MeetingFocus } from "./meetings/MeetingsPage";
+import { beginMeeting } from "./meetings/types";
 import type { Meeting, Topic } from "./meetings/types";
 
-type Page = "dashboard" | "backlog" | "board" | "sprints" | "reports" | "ceremonies" | "meetings" | "permissions";
+type Page = "dashboard" | "backlog" | "board" | "sprints" | "reports" | "ceremonies" | "meetings" | "calendar" | "permissions";
 type Theme = "light" | "dark";
 type ViewMode = "card" | "list";
 type UserPermission = "Membro" | "Admin";
@@ -232,7 +235,8 @@ const menuItems = [
   { id: "sprints", label: "Sprints", icon: KanbanSquare },
   { id: "reports", label: "Relatorios", icon: BarChart3 },
   { id: "ceremonies", label: "Cerimonias", icon: SquareKanban },
-  { id: "meetings", label: "Reuniões", icon: UsersRound }
+  { id: "meetings", label: "Reuniões", icon: UsersRound },
+  { id: "calendar", label: "Calendário", icon: CalendarDays }
 ] satisfies Array<{ id: Page; label: string; icon: typeof LayoutDashboard }>;
 
 const defaultProducts = [
@@ -785,6 +789,7 @@ export function App() {
   const [dailyConfig, setDailyConfig] = useState<DailyRecord[]>([]);
   const [meetingsConfig, setMeetingsConfig] = useState<Meeting[]>([]);
   const [topicsConfig, setTopicsConfig] = useState<Topic[]>([]);
+  const [meetingFocus, setMeetingFocus] = useState<MeetingFocus>(null);
   const [planningConfig, setPlanningConfig] = useState<PlanningRecord[]>([]);
   const [retroConfig, setRetroConfig] = useState<Retrospective[]>([]);
   const [sprintConfig, setSprintConfig] = useState<SprintPlan[]>(() => sprintPlans.map((sprint) => ({ ...sprint })));
@@ -962,6 +967,17 @@ export function App() {
     setPage(nextPage);
   }
 
+  /** Abre uma reunião na página Reuniões (usado pelo Calendário). */
+  function openMeeting(meeting: Meeting, mode: "room" | "detail") {
+    setMeetingFocus({ id: meeting.id, mode });
+    setPage("meetings");
+  }
+
+  function startScheduledMeeting(meeting: Meeting) {
+    setMeetingsConfig((current) => current.map((item) => (item.id === meeting.id ? beginMeeting(item, topicsConfig) : item)));
+    openMeeting(meeting, "room");
+  }
+
   function handleProductChange(productId: string) {
     setActiveProductId(productId);
     if (page === "permissions") {
@@ -1126,12 +1142,23 @@ export function App() {
       {page === "meetings" && (
         <MeetingsPage
           currentMember={currentMember ? { id: currentMember.id, name: currentMember.name, email: currentMember.email } : undefined}
+          focus={meetingFocus}
+          onFocusConsumed={() => setMeetingFocus(null)}
           meetings={meetingsConfig}
           members={activeProduct.members.map((member) => ({ id: member.id, name: member.name, email: member.email }))}
           onMeetingsChange={setMeetingsConfig}
           onTopicsChange={setTopicsConfig}
           topbar={<Topbar title="Reuniões" subtitle="Histórico de reuniões e tópicos para levar à próxima." theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
           topics={topicsConfig}
+        />
+      )}
+      {page === "calendar" && (
+        <CalendarPage
+          meetings={meetingsConfig}
+          members={activeProduct.members.map((member) => ({ id: member.id, name: member.name, email: member.email }))}
+          onOpenMeeting={(meeting) => openMeeting(meeting, meeting.status === "in_progress" ? "room" : "detail")}
+          onStartMeeting={startScheduledMeeting}
+          topbar={<Topbar title="Calendário" subtitle="Reuniões agendadas e realizadas." theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
         />
       )}
       {page === "permissions" && isAdmin && <PermissionsPage theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
