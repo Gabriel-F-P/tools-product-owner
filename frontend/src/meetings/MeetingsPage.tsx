@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, CalendarDays, CheckSquare, Clock, Pencil, Play, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckSquare, ChevronDown, Clock, Pencil, Play, Plus, Search, Trash2, X } from "lucide-react";
 import { MeetingRoom } from "./MeetingRoom";
 import { RichEditor } from "./RichEditor";
 import { ConfirmModal, Modal } from "./ui";
@@ -52,7 +52,8 @@ export function MeetingsPage({
 }) {
   const [tab, setTab] = useState<Tab>("history");
   const [view, setView] = useState<View>(() => (focus ? { kind: focus.mode, id: focus.id } : { kind: "list" }));
-  const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
+  /** Modo escolhido no menu "Nova reunião"; o modal só abre depois da escolha. */
+  const [creatingMode, setCreatingMode] = useState<"now" | "later" | null>(null);
 
   useEffect(() => {
     if (focus) {
@@ -85,7 +86,7 @@ export function MeetingsPage({
     const meeting = mode === "now" ? beginMeeting(base, topics) : base;
 
     onMeetingsChange([meeting, ...meetings]);
-    setIsCreatingMeeting(false);
+    setCreatingMode(null);
     setView(mode === "now" ? { kind: "room", id: meeting.id } : { kind: "detail", id: meeting.id });
   }
 
@@ -145,9 +146,7 @@ export function MeetingsPage({
               Tópicos <span className="mt-count">{pendingTopicsForNextMeeting(topics).length}</span>
             </button>
           </div>
-          <button className="mt-btn primary" onClick={() => setIsCreatingMeeting(true)} type="button">
-            <Plus size={16} /> Nova reunião
-          </button>
+          <NewMeetingMenu onChoose={setCreatingMode} />
         </div>
 
         {tab === "history" && (
@@ -169,11 +168,12 @@ export function MeetingsPage({
         )}
       </section>
 
-      {isCreatingMeeting && (
+      {creatingMode && (
         <NewMeetingModal
+          mode={creatingMode}
           currentEmail={currentMember?.email}
           members={members}
-          onClose={() => setIsCreatingMeeting(false)}
+          onClose={() => setCreatingMode(null)}
           onSubmit={createMeeting}
           pendingCount={pendingTopicsForNextMeeting(topics).length}
         />
@@ -411,36 +411,79 @@ function MeetingDetail({
 
 /* ------------------------------ Nova reunião ------------------------------ */
 
+/** Botão "Nova reunião" com menu suspenso (Iniciar agora / Iniciar depois) logo abaixo. */
+function NewMeetingMenu({ onChoose }: { onChoose: (mode: "now" | "later") => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const esc = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  const options: Array<{ mode: "now" | "later"; label: string; hint: string }> = [
+    { mode: "now", label: "Iniciar agora", hint: "Abre a sala e começa a reunião" },
+    { mode: "later", label: "Iniciar depois", hint: "Agenda no Calendário" }
+  ];
+
+  return (
+    <div className="mt-menu" ref={ref}>
+      <button aria-expanded={open} aria-haspopup="menu" className="mt-btn primary" onClick={() => setOpen((current) => !current)} type="button">
+        <Plus size={16} /> Nova reunião <ChevronDown size={16} />
+      </button>
+      {open && (
+        <div className="mt-menu-list" role="menu">
+          {options.map((option) => (
+            <button
+              key={option.mode}
+              onClick={() => {
+                setOpen(false);
+                onChoose(option.mode);
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <strong>{option.label}</strong>
+              <small>{option.hint}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewMeetingModal({
+  mode,
   members,
   currentEmail,
   pendingCount,
   onClose,
   onSubmit
 }: {
+  /** Escolhido no menu do botão "Nova reunião". */
+  mode: "now" | "later";
   members: MemberLite[];
   currentEmail?: string;
   pendingCount: number;
   onClose: () => void;
   onSubmit: (input: NewMeetingInput, mode: "now" | "later") => void;
 }) {
-  const [mode, setMode] = useState<"now" | "later">("now");
   const [title, setTitle] = useState("");
   const [agenda, setAgenda] = useState("");
   const [selected, setSelected] = useState<string[]>(currentEmail ? [currentEmail] : []);
-  const [date, setDate] = useState(todayIso());
-  const [dateTouched, setDateTouched] = useState(false);
+  const [date, setDate] = useState(mode === "later" ? tomorrowIso() : todayIso());
   const [error, setError] = useState("");
   const isLater = mode === "later";
-
-  function changeMode(next: "now" | "later") {
-    setMode(next);
-    setError("");
-
-    if (!dateTouched) {
-      setDate(next === "later" ? tomorrowIso() : todayIso());
-    }
-  }
 
   function submit() {
     if (!title.trim()) {
@@ -475,18 +518,9 @@ function NewMeetingModal({
         </>
       }
       onClose={onClose}
-      title="Nova reunião"
+      title={isLater ? "Nova reunião · Iniciar depois" : "Nova reunião · Iniciar agora"}
     >
       <div className="mt-form">
-        <div className="mt-segment mt-segment-full" role="radiogroup" aria-label="Quando iniciar">
-          <button aria-checked={!isLater} className={!isLater ? "active" : ""} onClick={() => changeMode("now")} role="radio" type="button">
-            Iniciar agora
-          </button>
-          <button aria-checked={isLater} className={isLater ? "active" : ""} onClick={() => changeMode("later")} role="radio" type="button">
-            Iniciar depois
-          </button>
-        </div>
-
         <label className="mt-field">
           Título *
           <input autoFocus onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Alinhamento semanal" value={title} />
@@ -525,10 +559,7 @@ function NewMeetingModal({
         <label className="mt-field">
           Dia da reunião *
           <input
-            onChange={(event) => {
-              setDate(event.target.value);
-              setDateTouched(true);
-            }}
+            onChange={(event) => setDate(event.target.value)}
             type="date"
             value={date}
           />
