@@ -13,7 +13,9 @@ workspaceStateRouter.get("/", async (_request, response, next) => {
 
 workspaceStateRouter.put("/", async (request, response, next) => {
   try {
-    response.json({ data: await saveWorkspaceState(request.body) });
+    await saveWorkspaceState(request.body);
+    // Devolve também o updatedAt para o cliente não reaplicar o próprio estado salvo.
+    response.json(await getWorkspaceStateRecord());
   } catch (error) {
     next(error);
   }

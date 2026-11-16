@@ -5,7 +5,6 @@ import {
   ArrowUp,
   BarChart3,
   Bell,
-  Building2,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -59,8 +58,10 @@ import type { UpdateIssueResult } from "./services/backlog";
 import { apiUrl } from "./services/api";
 import { getDashboard } from "./services/dashboard";
 import { mockDashboard } from "./services/mockDashboard";
+import { MeetingsPage } from "./meetings/MeetingsPage";
+import type { Meeting, Topic } from "./meetings/types";
 
-type Page = "dashboard" | "backlog" | "board" | "sprints" | "clients" | "reports" | "ceremonies" | "apis" | "permissions";
+type Page = "dashboard" | "backlog" | "board" | "sprints" | "reports" | "ceremonies" | "meetings" | "permissions";
 type Theme = "light" | "dark";
 type ViewMode = "card" | "list";
 type UserPermission = "Membro" | "Admin";
@@ -93,6 +94,8 @@ type WorkspaceStateSnapshot = Partial<{
   categoryConfig: CategoryConfig[];
   clientConfig: ClientAccount[];
   dailyConfig: DailyRecord[];
+  meetingsConfig: Meeting[];
+  topicsConfig: Topic[];
   initialVisibleTabs: number;
   planningConfig: PlanningRecord[];
   products: ProductAccess[];
@@ -227,10 +230,9 @@ const menuItems = [
   { id: "backlog", label: "Backlog", icon: Table2 },
   { id: "board", label: "Board", icon: PanelTop },
   { id: "sprints", label: "Sprints", icon: KanbanSquare },
-  { id: "clients", label: "Clientes", icon: Building2 },
   { id: "reports", label: "Relatorios", icon: BarChart3 },
   { id: "ceremonies", label: "Cerimonias", icon: SquareKanban },
-  { id: "apis", label: "API's", icon: GitBranch }
+  { id: "meetings", label: "Reuniões", icon: UsersRound }
 ] satisfies Array<{ id: Page; label: string; icon: typeof LayoutDashboard }>;
 
 const defaultProducts = [
@@ -781,6 +783,8 @@ export function App() {
   const [categoryConfig, setCategoryConfig] = useState<CategoryConfig[]>(() => defaultBacklogCategories.map((category) => ({ ...category })));
   const [clientConfig, setClientConfig] = useState<ClientAccount[]>([]);
   const [dailyConfig, setDailyConfig] = useState<DailyRecord[]>([]);
+  const [meetingsConfig, setMeetingsConfig] = useState<Meeting[]>([]);
+  const [topicsConfig, setTopicsConfig] = useState<Topic[]>([]);
   const [planningConfig, setPlanningConfig] = useState<PlanningRecord[]>([]);
   const [retroConfig, setRetroConfig] = useState<Retrospective[]>([]);
   const [sprintConfig, setSprintConfig] = useState<SprintPlan[]>(() => sprintPlans.map((sprint) => ({ ...sprint })));
@@ -810,6 +814,8 @@ export function App() {
     if (snapshot.categoryConfig) setCategoryConfig(snapshot.categoryConfig);
     if (snapshot.clientConfig) setClientConfig(snapshot.clientConfig);
     if (snapshot.dailyConfig) setDailyConfig(snapshot.dailyConfig);
+    if (snapshot.meetingsConfig) setMeetingsConfig(snapshot.meetingsConfig);
+    if (snapshot.topicsConfig) setTopicsConfig(snapshot.topicsConfig);
     if (typeof snapshot.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
     if (snapshot.planningConfig) setPlanningConfig(snapshot.planningConfig);
     if (snapshot.products) setProducts(snapshot.products);
@@ -881,6 +887,8 @@ export function App() {
         categoryConfig,
         clientConfig,
         dailyConfig,
+        meetingsConfig,
+        topicsConfig,
         initialVisibleTabs,
         planningConfig,
         products,
@@ -889,7 +897,11 @@ export function App() {
         sprintStatusConfig
       };
 
-      window.localStorage.setItem(workspaceStateStorageKey, JSON.stringify(snapshot));
+      try {
+        window.localStorage.setItem(workspaceStateStorageKey, JSON.stringify(snapshot));
+      } catch {
+        // Cota do localStorage estourada (ex.: muitas imagens); o servidor continua sendo a fonte principal.
+      }
 
       fetch(apiUrl("/api/workspace-state"), {
         body: JSON.stringify(snapshot),
@@ -904,7 +916,7 @@ export function App() {
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
-  }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, dailyConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, planningConfig, products, retroConfig, sprintConfig, sprintStatusConfig]);
+  }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, dailyConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, meetingsConfig, planningConfig, products, retroConfig, sprintConfig, sprintStatusConfig, topicsConfig]);
 
   useEffect(() => {
     if (!isAuthenticated || !isWorkspaceStateLoaded) {
@@ -1093,18 +1105,6 @@ export function App() {
           onToggleTheme={() => setTheme(toggleTheme)}
         />
       )}
-      {page === "clients" && (
-        <ClientsPage
-          backlogColumns={backlogConfig}
-          clients={clientConfig}
-          members={activeProduct.members}
-          onBacklogColumnsChange={setBacklogConfig}
-          onClientsChange={setClientConfig}
-          sprints={sprintConfig}
-          theme={theme}
-          onToggleTheme={() => setTheme(toggleTheme)}
-        />
-      )}
       {page === "reports" && <ReportsPage backlogColumns={backlogConfig} boardColumns={boardConfig} categories={categoryConfig} clients={clientConfig} theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
       {page === "ceremonies" && (
         <CeremoniesPage
@@ -1123,7 +1123,17 @@ export function App() {
           onToggleTheme={() => setTheme(toggleTheme)}
         />
       )}
-      {page === "apis" && <ApisPage theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
+      {page === "meetings" && (
+        <MeetingsPage
+          currentMember={currentMember ? { id: currentMember.id, name: currentMember.name, email: currentMember.email } : undefined}
+          meetings={meetingsConfig}
+          members={activeProduct.members.map((member) => ({ id: member.id, name: member.name, email: member.email }))}
+          onMeetingsChange={setMeetingsConfig}
+          onTopicsChange={setTopicsConfig}
+          topbar={<Topbar title="Reuniões" subtitle="Histórico de reuniões e tópicos para levar à próxima." theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
+          topics={topicsConfig}
+        />
+      )}
       {page === "permissions" && isAdmin && <PermissionsPage theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
       {page === "dashboard" && <DashboardPage theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
     </div>
@@ -1817,290 +1827,6 @@ function DashboardPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   );
 }
 
-function ClientsPage({
-  backlogColumns,
-  clients,
-  members,
-  onBacklogColumnsChange,
-  onClientsChange,
-  sprints,
-  theme,
-  onToggleTheme
-}: {
-  backlogColumns: BacklogColumn[];
-  clients: ClientAccount[];
-  members: ProductMember[];
-  onBacklogColumnsChange: (columns: BacklogColumn[]) => void;
-  onClientsChange: (clients: ClientAccount[]) => void;
-  sprints: SprintPlan[];
-  theme: Theme;
-  onToggleTheme: () => void;
-}) {
-  const [clientName, setClientName] = useState("");
-  const [hasSquad, setHasSquad] = useState(false);
-  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
-  const [squadHours, setSquadHours] = useState("");
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [taskName, setTaskName] = useState("");
-  const [taskPriority, setTaskPriority] = useState<Priority>("Media");
-  const [taskCategory, setTaskCategory] = useState(defaultBacklogCategories[0]?.name ?? "SLA");
-  const [taskSprint, setTaskSprint] = useState(sprints[0]?.name ?? "Em planejamento");
-  const [taskOwner, setTaskOwner] = useState("");
-  const [taskStoryPoints, setTaskStoryPoints] = useState("");
-  const [targetBacklogColumn, setTargetBacklogColumn] = useState(backlogColumns[0]?.title ?? "");
-
-  function addClient() {
-    if (!clientName.trim()) {
-      return;
-    }
-
-    onClientsChange([
-      ...clients,
-      {
-        id: `client-${Date.now()}`,
-        name: clientName.trim(),
-        hasSquad,
-        squadHours: hasSquad ? Number(squadHours) || 0 : 0
-      }
-    ]);
-    setClientName("");
-    setHasSquad(false);
-    setSquadHours("");
-    setIsClientModalOpen(false);
-  }
-
-  function updateClient(clientId: string, updates: Partial<Pick<ClientAccount, "name" | "hasSquad" | "squadHours">>) {
-    onClientsChange(clients.map((client) => client.id === clientId ? { ...client, ...updates } : client));
-  }
-
-  function addClientTask() {
-    const selectedClient = clients.find((client) => client.id === selectedClientId);
-
-    if (!selectedClient || !taskName.trim() || backlogColumns.length === 0) {
-      return;
-    }
-
-    const targetColumnIndex = Math.max(backlogColumns.findIndex((column) => column.title === targetBacklogColumn), 0);
-    const totalBacklogItems = backlogColumns.reduce((total, column) => total + flattenBacklogEntries(column.entries).length, 0);
-    const newTask: BacklogItem = {
-      order: totalBacklogItems + 1,
-      name: taskName.trim(),
-      sprint: taskSprint.trim() || "Em planejamento",
-      category: taskCategory,
-      priority: taskPriority,
-      createdAt: new Date().toLocaleDateString("pt-BR"),
-      owner: taskOwner || undefined,
-      storyPoints: taskStoryPoints ? Number(taskStoryPoints) || undefined : undefined,
-      client: selectedClient.name
-    };
-
-    onBacklogColumnsChange(backlogColumns.map((column, columnIndex) => (
-      columnIndex === targetColumnIndex ? { ...column, entries: [newTask, ...column.entries] } : column
-    )));
-    setTaskName("");
-    setTaskPriority("Media");
-    setTaskCategory(defaultBacklogCategories[0]?.name ?? "SLA");
-    setTaskSprint(sprints[0]?.name ?? "Em planejamento");
-    setTaskOwner("");
-    setTaskStoryPoints("");
-    setTargetBacklogColumn(backlogColumns[targetColumnIndex]?.title ?? backlogColumns[0]?.title ?? "");
-  }
-
-  const squadClients = clients.filter((client) => client.hasSquad);
-  const selectedClient = clients.find((client) => client.id === selectedClientId);
-  const clientTaskRows = selectedClient
-    ? backlogColumns.flatMap((column) => flattenBacklogEntries(column.entries)
-      .filter((item) => item.client === selectedClient.name)
-      .map((item) => ({ item, columnTitle: column.title })))
-    : [];
-
-  if (selectedClient) {
-    return (
-      <main className="dashboard clients-page">
-        <Topbar title={selectedClient.name} subtitle="Tarefas vinculadas ao cliente e envio direto para o backlog." theme={theme} onToggleTheme={onToggleTheme} />
-        <section className="client-detail-header">
-          <button className="secondary-button" type="button" onClick={() => setSelectedClientId(null)}><ChevronLeft size={16} />Voltar para clientes</button>
-          <div>
-            <span className={selectedClient.hasSquad ? "squad-positive" : "squad-muted"}>{selectedClient.hasSquad ? <UsersRound size={18} /> : <UserRound size={18} />}<strong>{selectedClient.hasSquad ? "Tem squad" : "Sem squad"}</strong></span>
-            <small>{selectedClient.hasSquad ? `${selectedClient.squadHours}h/mes dedicadas` : "Demanda sob demanda"}</small>
-          </div>
-        </section>
-
-        <section className="workspace-panel client-task-create-panel">
-          <header>
-            <h2>Nova tarefa do cliente</h2>
-            <span>Crie a atividade e escolha em qual aba do backlog ela entra.</span>
-          </header>
-          <div className="client-task-form">
-            <label>
-              <span>Titulo</span>
-              <input value={taskName} onChange={(event) => setTaskName(event.target.value)} placeholder="Nome da tarefa" />
-            </label>
-            <label>
-              <span>Aba do backlog</span>
-              <select value={targetBacklogColumn} onChange={(event) => setTargetBacklogColumn(event.target.value)}>
-                {backlogColumns.map((column) => <option key={column.title} value={column.title}>{column.title}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Responsavel</span>
-              <select value={taskOwner} onChange={(event) => setTaskOwner(event.target.value)}>
-                <option value="">Sem responsavel</option>
-                {members.map((member) => <option key={member.id} value={member.name}>{member.name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>SP</span>
-              <input min={0} type="number" value={taskStoryPoints} onChange={(event) => setTaskStoryPoints(event.target.value)} placeholder="SP" />
-            </label>
-            <label>
-              <span>Categoria</span>
-              <select value={taskCategory} onChange={(event) => setTaskCategory(event.target.value)}>
-                {defaultBacklogCategories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Prioridade</span>
-              <select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as Priority)}>
-                <option value="Baixa">Baixa</option>
-                <option value="Media">Media</option>
-                <option value="Alta">Alta</option>
-              </select>
-            </label>
-            <label>
-              <span>Sprint</span>
-              <select value={taskSprint} onChange={(event) => setTaskSprint(event.target.value)}>
-                <option value="Em planejamento">Em planejamento</option>
-                {sprints.map((sprint) => <option key={sprint.id} value={sprint.name}>{sprint.name}</option>)}
-              </select>
-            </label>
-            <button className="primary-button" type="button" onClick={addClientTask}><Plus size={16} />Adicionar tarefa</button>
-          </div>
-        </section>
-
-        <section className="workspace-panel clients-model-panel">
-          <div className="client-task-table">
-            <div className="client-task-row client-task-head"><span>Tarefa</span><span>Responsavel</span><span>SP</span><span>Criada em</span><span>Aba</span></div>
-            {clientTaskRows.length === 0 && <div className="client-task-empty">Nenhuma tarefa vinculada a este cliente ainda.</div>}
-            {clientTaskRows.map(({ item, columnTitle }) => (
-              <div className="client-task-row" key={`${columnTitle}-${item.order}-${item.name}`}>
-                <strong>{item.name}</strong>
-                <span>{item.owner || "Sem responsavel"}</span>
-                <span>{item.storyPoints ?? "-"}</span>
-                <span>{item.createdAt}</span>
-                <span>{columnTitle}</span>
-              </div>
-            ))}
-          </div>
-          <footer className="client-table-footer"><span>{clientTaskRows.length} tarefas encontradas</span><span>Cliente: {selectedClient.name}</span></footer>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="dashboard clients-page">
-      <Topbar title="Clientes" subtitle="Gerencie seus clientes e as informacoes das squads associadas." theme={theme} onToggleTheme={onToggleTheme} />
-      <section className="clients-command-bar">
-        <label className="search-field client-search"><Search size={18} /><input placeholder="Buscar cliente..." /></label>
-        <button className="secondary-button" type="button"><ListFilter size={16} />Filtrar</button>
-        <button className="primary-button" type="button" onClick={() => setIsClientModalOpen(true)}><Plus size={16} />Novo cliente</button>
-      </section>
-      <section className="client-metrics">
-        <article><UsersRound size={24} /><strong>{clients.length}</strong><span>Total de clientes</span></article>
-        <article><UsersRound size={24} /><strong>{squadClients.length}</strong><span>Clientes com squad</span></article>
-      </section>
-      <section className="workspace-panel clients-model-panel">
-        <div className="client-table">
-          <div className="client-table-row client-table-head"><span>Cliente</span><span>Squad</span><span>Horas dedicadas</span><span>Status</span><span>Contato</span><span>Acoes</span></div>
-          {clients.map((client) => (
-            <div className="client-table-row client-table-row-clickable" key={client.id} role="button" tabIndex={0} onClick={() => setSelectedClientId(client.id)} onKeyDown={(event) => event.key === "Enter" && setSelectedClientId(client.id)}>
-              <span className="client-name-cell"><i>{client.name.slice(0, 1).toUpperCase()}</i><span><input value={client.name} onClick={(event) => event.stopPropagation()} onChange={(event) => updateClient(client.id, { name: event.target.value })} /><small>Cliente desde 12/01/2024</small></span></span>
-              <span className={client.hasSquad ? "squad-positive" : "squad-muted"}>{client.hasSquad ? <UsersRound size={18} /> : <UserRound size={18} />}<span><strong>{client.hasSquad ? "Tem squad" : "Sem squad"}</strong><small>{client.hasSquad ? `Squad ${client.name}` : "Demanda sob demanda"}</small></span></span>
-              <span className="hours-cell"><input min={0} type="number" value={client.squadHours || ""} disabled={!client.hasSquad} onClick={(event) => event.stopPropagation()} onChange={(event) => updateClient(client.id, { squadHours: Number(event.target.value) || 0 })} /><small>{client.hasSquad ? "Dedicadas ao desenvolvimento" : "Nao possui horas dedicadas"}</small></span>
-              <span className="status-pill">Ativo</span>
-              <span>Contato<small>contato@{client.name.toLowerCase().replace(/\s+/g, "")}.com</small></span>
-              <span className="client-actions"><button type="button" onClick={(event) => { event.stopPropagation(); setSelectedClientId(client.id); }} aria-label={`Ver tarefas de ${client.name}`}><Settings size={16} /></button><button type="button" onClick={(event) => { event.stopPropagation(); onClientsChange(clients.filter((currentClient) => currentClient.id !== client.id)); }} aria-label={`Remover ${client.name}`}><X size={16} /></button></span>
-            </div>
-          ))}
-        </div>
-        <footer className="client-table-footer"><span>Mostrando 1 a {clients.length} de {clients.length} clientes</span><span>Itens por pagina: 10</span></footer>
-      </section>
-      {isClientModalOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setIsClientModalOpen(false)}>
-          <section className="create-item-panel modal-panel client-create-modal" role="dialog" aria-modal="true" aria-labelledby="client-create-title" onMouseDown={(event) => event.stopPropagation()}>
-            <header>
-              <div>
-                <h2 id="client-create-title">Novo cliente</h2>
-                <p>Cadastre o cliente e, se houver squad, informe as horas mensais.</p>
-              </div>
-              <button type="button" aria-label="Fechar" onClick={() => setIsClientModalOpen(false)}>
-                <X size={22} />
-              </button>
-            </header>
-            <form>
-              <label>
-                <span>Nome do cliente</span>
-                <input value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Ex.: LXP" />
-              </label>
-              <label className="inline-check client-squad-check">
-                <input checked={hasSquad} type="checkbox" onChange={(event) => setHasSquad(event.target.checked)} />
-                <span>Cliente possui Squad</span>
-              </label>
-              {hasSquad && (
-                <label>
-                  <span>Horas dedicadas por mes</span>
-                  <input min={0} type="number" value={squadHours} onChange={(event) => setSquadHours(event.target.value)} placeholder="Horas/mes" />
-                </label>
-              )}
-            </form>
-            <footer>
-              <button className="secondary-button" type="button" onClick={() => setIsClientModalOpen(false)}>Cancelar</button>
-              <button className="primary-button" type="button" onClick={addClient}>Cadastrar cliente</button>
-            </footer>
-          </section>
-        </div>
-      )}
-      <section className="workspace-panel clients-layout">
-        <div className="settings-subpanel">
-          <h3>Novo cliente</h3>
-          <label>
-            <span>Nome do cliente</span>
-            <input value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Ex.: LXP" />
-          </label>
-          <label className="inline-check client-squad-check">
-            <input checked={hasSquad} type="checkbox" onChange={(event) => setHasSquad(event.target.checked)} />
-            <span>Cliente possui Squad</span>
-          </label>
-          {hasSquad && (
-            <label>
-              <span>Horas dedicadas</span>
-              <input min={0} type="number" value={squadHours} onChange={(event) => setSquadHours(event.target.value)} placeholder="Horas/mês" />
-            </label>
-          )}
-          <button className="primary-button" type="button" onClick={addClient}>Cadastrar cliente</button>
-        </div>
-        <div className="client-list">
-          {clients.map((client) => (
-            <article className={`client-row ${client.hasSquad ? "with-squad" : ""}`} key={client.id}>
-              <span className="client-icon">{client.hasSquad ? <UsersRound size={18} /> : <Building2 size={18} />}</span>
-              <input value={client.name} onChange={(event) => updateClient(client.id, { name: event.target.value })} aria-label={`Nome do cliente ${client.name}`} />
-              <label className="inline-check">
-                <input checked={client.hasSquad} type="checkbox" onChange={(event) => updateClient(client.id, { hasSquad: event.target.checked, squadHours: event.target.checked ? client.squadHours : 0 })} />
-                <span>Squad</span>
-              </label>
-              <input min={0} type="number" value={client.squadHours || ""} disabled={!client.hasSquad} onChange={(event) => updateClient(client.id, { squadHours: Number(event.target.value) || 0 })} aria-label={`Horas de squad de ${client.name}`} />
-              <button type="button" onClick={() => onClientsChange(clients.filter((currentClient) => currentClient.id !== client.id))} aria-label={`Remover ${client.name}`}>
-                <X size={17} />
-              </button>
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
-  );
-}
-
 function ReportsPage({
   backlogColumns,
   boardColumns,
@@ -2142,166 +1868,6 @@ function ReportsPage({
         <ReportChart title="Categorias" subtitle="Proporcao de tarefas" rows={categoryRows} />
         <ReportChart title="Clientes" subtitle="Distribuicao por cliente" rows={clientRows} />
         <RollbackChart />
-      </section>
-    </main>
-  );
-}
-
-type ApiTool = "linear" | "sheets" | "discord";
-
-interface ApiSettings {
-  discordWebhookUrl: string;
-  linearApiKey: string;
-  linearDefaultStateId: string;
-  linearListWebhookUrl: string;
-  linearProjectId: string;
-  linearTeamId: string;
-  linearToolWebhookUrl: string;
-  linearWebhookSecret: string;
-  sheetsWebhookUrl: string;
-}
-
-const defaultApiSettings: ApiSettings = {
-  discordWebhookUrl: "",
-  linearApiKey: "",
-  linearDefaultStateId: "",
-  linearListWebhookUrl: "/webhook/linear-update-listen",
-  linearProjectId: "",
-  linearTeamId: "",
-  linearToolWebhookUrl: "/webhook/tool-update-n8n",
-  linearWebhookSecret: "",
-  sheetsWebhookUrl: ""
-};
-const apiSettingsStorageKey = "toolz-api-settings";
-
-function ApisPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
-  const [selectedTool, setSelectedTool] = useState<ApiTool>("linear");
-  const [apiSettings, setApiSettings] = useState<ApiSettings>(() => {
-    const storedSettings = window.localStorage.getItem(apiSettingsStorageKey);
-    return storedSettings ? { ...defaultApiSettings, ...JSON.parse(storedSettings) } : defaultApiSettings;
-  });
-  const [saveStatus, setSaveStatus] = useState("");
-
-  useEffect(() => {
-    fetch(apiUrl("/api/integrations/settings"))
-      .then((response) => response.ok ? response.json() : defaultApiSettings)
-      .then((settings: Partial<ApiSettings>) => {
-        const storedSettings = window.localStorage.getItem(apiSettingsStorageKey);
-        const localSettings = storedSettings ? JSON.parse(storedSettings) as Partial<ApiSettings> : {};
-        setApiSettings({ ...defaultApiSettings, ...settings, ...localSettings });
-      })
-      .catch(() => setApiSettings(defaultApiSettings));
-  }, []);
-
-  function updateApiSetting(key: keyof ApiSettings, value: string) {
-    setApiSettings((currentSettings) => ({ ...currentSettings, [key]: value }));
-  }
-
-  async function saveApiSettings() {
-    setSaveStatus("Salvando...");
-    window.localStorage.setItem(apiSettingsStorageKey, JSON.stringify(apiSettings));
-    const response = await fetch(apiUrl("/api/integrations/settings"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(apiSettings)
-    });
-
-    setSaveStatus(response.ok ? "Configuracoes salvas." : "Nao foi possivel salvar.");
-  }
-
-  return (
-    <main className="dashboard apis-page">
-      <Topbar title="API's" subtitle="Configure URLs de integracao das ferramentas conectadas." theme={theme} onToggleTheme={onToggleTheme} />
-      <section className="workspace-panel api-integrations-panel">
-        <div className="integration-panel api-tools-grid">
-          <IntegrationCard
-            active={selectedTool === "linear"}
-            logo="linear"
-            items={["Workspace: Toolz.me", "Team: Product Owner"]}
-            action="Configurar Linear"
-            onClick={() => setSelectedTool("linear")}
-          />
-          <IntegrationCard
-            active={selectedTool === "sheets"}
-            logo="sheets"
-            title="Google Sheets"
-            items={["Planilha: Backlog Toolz.me", "Aba: Backlog"]}
-            action="Configurar Google Sheets"
-            onClick={() => setSelectedTool("sheets")}
-          />
-          <IntegrationCard
-            active={selectedTool === "discord"}
-            logo="discord"
-            title="Discord"
-            items={["Servidor: Toolz.me", "Canal: #produto"]}
-            action="Configurar Discord"
-            onClick={() => setSelectedTool("discord")}
-          />
-          <div className="info-callout">
-            <span>i</span>
-            Ao adicionar um novo item, ele pode ser enviado para as ferramentas conectadas por estes endpoints.
-          </div>
-        </div>
-
-        <div className="api-settings-panel">
-          {selectedTool === "linear" && (
-            <>
-              <h2>Linear</h2>
-              <div className="api-fields-grid">
-                <label>
-                  <span>Chave API Linear</span>
-                  <input value={apiSettings.linearApiKey} onChange={(event) => updateApiSetting("linearApiKey", event.target.value)} placeholder="lin_api_..." type="password" />
-                </label>
-                <label>
-                  <span>Team ID</span>
-                  <input value={apiSettings.linearTeamId} onChange={(event) => updateApiSetting("linearTeamId", event.target.value)} placeholder="TEAM_ID" />
-                </label>
-                <label>
-                  <span>Project ID</span>
-                  <input value={apiSettings.linearProjectId} onChange={(event) => updateApiSetting("linearProjectId", event.target.value)} placeholder="PROJECT_ID" />
-                </label>
-                <label>
-                  <span>State ID padrao</span>
-                  <input value={apiSettings.linearDefaultStateId} onChange={(event) => updateApiSetting("linearDefaultStateId", event.target.value)} placeholder="STATE_ID" />
-                </label>
-                <label>
-                  <span>Linear envia para</span>
-                  <input value={apiSettings.linearListWebhookUrl} onChange={(event) => updateApiSetting("linearListWebhookUrl", event.target.value)} placeholder="/webhook/linear-update-listen" />
-                </label>
-                <label>
-                  <span>Toolzz envia para</span>
-                  <input value={apiSettings.linearToolWebhookUrl} onChange={(event) => updateApiSetting("linearToolWebhookUrl", event.target.value)} placeholder="/webhook/tool-update-n8n" />
-                </label>
-                <label>
-                  <span>Segredo webhook</span>
-                  <input value={apiSettings.linearWebhookSecret} onChange={(event) => updateApiSetting("linearWebhookSecret", event.target.value)} placeholder="Opcional" type="password" />
-                </label>
-              </div>
-            </>
-          )}
-          {selectedTool === "sheets" && (
-            <>
-              <h2>Google Sheets</h2>
-              <label>
-                <span>URL de integracao</span>
-                <input value={apiSettings.sheetsWebhookUrl} onChange={(event) => updateApiSetting("sheetsWebhookUrl", event.target.value)} placeholder="https://..." />
-              </label>
-            </>
-          )}
-          {selectedTool === "discord" && (
-            <>
-              <h2>Discord</h2>
-              <label>
-                <span>URL de integracao</span>
-                <input value={apiSettings.discordWebhookUrl} onChange={(event) => updateApiSetting("discordWebhookUrl", event.target.value)} placeholder="https://discord.com/api/webhooks/..." />
-              </label>
-            </>
-          )}
-          <footer className="api-settings-footer">
-            <span>{saveStatus}</span>
-            <button className="primary-button" type="button" onClick={saveApiSettings}>Salvar configuracoes</button>
-          </footer>
-        </div>
       </section>
     </main>
   );

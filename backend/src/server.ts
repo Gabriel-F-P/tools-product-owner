@@ -26,7 +26,7 @@ app.use(cors({
   }
 }));
 app.options("*", cors());
-app.use(express.json());
+app.use(express.json({ limit: "30mb" })); // o estado do workspace pode conter imagens das reuniões
 
 app.get("/api/health", (_request, response) => {
   response.json({ status: "ok" });
