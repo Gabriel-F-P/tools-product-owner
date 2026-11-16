@@ -121,6 +121,7 @@ const workspaceStateStorageKey = "toolz-workspace-state-v2";
 const authSessionStorageKey = "toolz-auth-session";
 const boardCollapsedStorageKey = "toolz-board-collapsed-projects";
 const backlogCollapsedStorageKey = "toolz-backlog-collapsed-projects";
+const deliveriesCollapsedStorageKey = "toolz-deliveries-collapsed-projects";
 
 interface BoardTabField {
   id: string;
@@ -238,7 +239,7 @@ const menuItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "backlog", label: "Backlog", icon: Table2 },
   { id: "board", label: "Board", icon: PanelTop },
-  { id: "sprints", label: "Sprints", icon: KanbanSquare },
+  { id: "sprints", label: "Entregas", icon: KanbanSquare },
   { id: "reports", label: "Relatorios", icon: BarChart3 },
   { id: "ceremonies", label: "Cerimonias", icon: SquareKanban },
   { id: "meetings", label: "Reuniões", icon: UsersRound },
@@ -1125,6 +1126,9 @@ export function App() {
           categories={categoryConfig}
           clients={clientConfig}
           members={activeProduct.members}
+          products={products}
+          currentEmail={currentMember?.email}
+          activeProductId={activeProductId}
           sprints={sprintConfig}
           statuses={sprintStatusConfig}
           onSprintsChange={setSprintConfig}
@@ -1506,7 +1510,8 @@ function boardCardToSprintItem(card: BoardCard): BacklogItem {
     linearUrl: card.linearUrl,
     owner: card.owner || undefined,
     assistants: card.assistants,
-    storyPoints: card.points || undefined
+    storyPoints: card.points || undefined,
+    productId: card.productId
   };
 }
 
@@ -3961,36 +3966,6 @@ function toBacklogTaskDetail(item: BacklogItem): TaskDetail {
   };
 }
 
-interface SprintPointBreakdown {
-  sprintName: string;
-  totalPoints: number;
-  totalHours: number;
-  categories: Array<{
-    category: string;
-    items: number;
-    points: number;
-    hours: number;
-    rate: number;
-  }>;
-}
-
-interface SprintCapacityBreakdown {
-  sprintName: string;
-  businessDays: number;
-  dailyCapacity: number;
-  totalCapacity: number;
-  squads: Array<{
-    clientName: string;
-    hasSquad: boolean;
-    monthlyHours: number;
-    plannedHours: number;
-    remainingHours: number;
-    items: number;
-  }>;
-  unassignedItems: number;
-  unassignedHours: number;
-}
-
 interface SprintEstimateResult {
   sprintName: string;
   totalHours: number;
@@ -4004,36 +3979,6 @@ interface SprintEstimateResult {
     hours: number;
     deliveryDate: string;
   }>;
-}
-
-function getSprintPointBreakdown(sprint: SprintPlan, items: BacklogItem[]): SprintPointBreakdown {
-  const categories = new Map<string, { items: number; points: number }>();
-
-  items.forEach((item) => {
-    const currentCategory = categories.get(item.category) ?? { items: 0, points: 0 };
-    currentCategory.items += 1;
-    currentCategory.points += item.storyPoints ?? 0;
-    categories.set(item.category, currentCategory);
-  });
-
-  const categoryRows = Array.from(categories.entries()).map(([category, value]) => {
-    const rate = categoryHourRates[category] ?? 5;
-
-    return {
-      category,
-      items: value.items,
-      points: value.points,
-      hours: value.points * rate,
-      rate
-    };
-  });
-
-  return {
-    sprintName: sprint.name,
-    totalPoints: categoryRows.reduce((total, row) => total + row.points, 0),
-    totalHours: categoryRows.reduce((total, row) => total + row.hours, 0),
-    categories: categoryRows
-  };
 }
 
 function parseSprintDate(date: string) {
@@ -4097,45 +4042,6 @@ function getItemEstimatedHours(item: BacklogItem) {
   return (item.storyPoints ?? 0) * (categoryHourRates[item.category] ?? 5);
 }
 
-function getSprintCapacityBreakdown(sprint: SprintPlan, items: BacklogItem[], clients: ClientAccount[], members: ProductMember[]): SprintCapacityBreakdown {
-  const totals = getSprintCapacityTotals(sprint, members);
-  const clientsByName = new Map(clients.map((client) => [client.name, client]));
-  const itemsByClient = new Map<string, BacklogItem[]>();
-
-  items.forEach((item) => {
-    const clientName = item.client?.trim() || "Sem empresa";
-    itemsByClient.set(clientName, [...(itemsByClient.get(clientName) ?? []), item]);
-  });
-
-  const squads = Array.from(itemsByClient.entries())
-    .sort(([firstClient], [secondClient]) => firstClient.localeCompare(secondClient))
-    .map(([clientName, clientItems]) => {
-      const client = clientsByName.get(clientName);
-      const hasSquad = Boolean(client?.hasSquad);
-      const monthlyHours = hasSquad ? client?.squadHours ?? 0 : 0;
-      const plannedHours = clientItems.reduce((total, item) => total + getItemEstimatedHours(item), 0);
-
-      return {
-        clientName,
-        hasSquad,
-        monthlyHours,
-        plannedHours,
-        remainingHours: monthlyHours - plannedHours,
-        items: clientItems.length
-      };
-    });
-
-  const withoutSquadRows = squads.filter((squad) => !squad.hasSquad);
-
-  return {
-    sprintName: sprint.name,
-    ...totals,
-    squads,
-    unassignedItems: withoutSquadRows.reduce((total, squad) => total + squad.items, 0),
-    unassignedHours: withoutSquadRows.reduce((total, squad) => total + squad.plannedHours, 0)
-  };
-}
-
 function getSprintEstimateResult(sprint: SprintPlan, items: BacklogItem[], members: ProductMember[]): SprintEstimateResult {
   const { dailyCapacity } = getSprintCapacityTotals(sprint, members);
   const effectiveDailyCapacity = Math.max(dailyCapacity, 1);
@@ -4195,9 +4101,6 @@ function BacklogCalendarView({
   onSprintsChange: (sprints: SprintPlan[]) => void;
 }) {
   const currentSprintRef = useRef<HTMLElement | null>(null);
-  const [selectedBreakdown, setSelectedBreakdown] = useState<SprintPointBreakdown | null>(null);
-  const [selectedCapacity, setSelectedCapacity] = useState<SprintCapacityBreakdown | null>(null);
-  const [capacitySprint, setCapacitySprint] = useState<SprintPlan | null>(null);
   const [estimatingSprintId, setEstimatingSprintId] = useState<string | null>(null);
   const activeStatus = statuses.find((status) => status.name === "Em andamento");
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
@@ -4230,8 +4133,6 @@ function BacklogCalendarView({
             const items = backlogItems.filter((item) => item.sprint === sprint.name && (!normalizedSearchTerm || item.name.toLowerCase().includes(normalizedSearchTerm)));
             const status = statuses.find((currentStatus) => currentStatus.id === sprint.statusId) ?? statuses[0];
             const isActiveSprint = activeStatus ? sprint.statusId === activeStatus.id : sprint.name === currentSprint;
-            const pointsBreakdown = getSprintPointBreakdown(sprint, items);
-            const capacityTotals = getSprintCapacityTotals(sprint, members);
 
             return (
               <section
@@ -4257,19 +4158,8 @@ function BacklogCalendarView({
                 <span className="sprint-items-count">{items.length} itens</span>
               </div>
               <div className="sprint-header-actions" aria-label="Acoes da sprint">
-                <button className="square-action compact-square-action" type="button" onClick={() => setCapacitySprint(sprint)} aria-label={`Capacity da ${sprint.name}`} title="Capacity">
-                  <BarChart3 size={16} />
-                </button>
                 <button className="square-action compact-square-action" type="button" onClick={() => generateSprintEstimates(sprint, items)} aria-label={`Gerar estimativa da ${sprint.name}`} title="Gerar estimativa" disabled={estimatingSprintId === sprint.id}>
                   {estimatingSprintId === sprint.id ? <LoaderCircle className="spin-icon" size={16} /> : <Rocket size={16} />}
-                </button>
-              </div>
-              <div className="sprint-header-metrics">
-                <button className="sprint-points-button" type="button" onClick={() => setSelectedBreakdown(pointsBreakdown)}>
-                  {pointsBreakdown.totalPoints} SP
-                </button>
-                <button className="sprint-points-button" type="button" onClick={() => setSelectedCapacity(getSprintCapacityBreakdown(sprint, items, clients, members))}>
-                  {capacityTotals.totalCapacity}h capacity
                 </button>
               </div>
             </header>
@@ -4301,10 +4191,6 @@ function BacklogCalendarView({
                   </header>
                   <h3>{item.name}</h3>
                   <footer>
-                    <span className="board-card-pill">
-                      <ListTodo size={14} />
-                      {item.storyPoints || "SP"}
-                    </span>
                     <label className="board-card-pill sprint-estimate-pill" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
                       <CalendarDays size={14} />
                       <input value={item.estimate ?? ""} onChange={(event) => onUpdateItemEstimate(item.order, event.target.value)} placeholder="Sem estimativa" />
@@ -4322,19 +4208,6 @@ function BacklogCalendarView({
           })}
         </div>
       </DualHorizontalScroll>
-      {selectedBreakdown && <SprintPointsModal breakdown={selectedBreakdown} onClose={() => setSelectedBreakdown(null)} />}
-      {selectedCapacity && <SprintCapacityBreakdownModal breakdown={selectedCapacity} onClose={() => setSelectedCapacity(null)} />}
-      {capacitySprint && (
-        <SprintCapacityModal
-          members={members}
-          onClose={() => setCapacitySprint(null)}
-          onSave={(capacityByMember) => {
-            onSprintsChange(sprints.map((sprint) => sprint.id === capacitySprint.id ? { ...sprint, capacityByMember } : sprint));
-            setCapacitySprint(null);
-          }}
-          sprint={capacitySprint}
-        />
-      )}
     </>
   );
 }
@@ -4350,6 +4223,9 @@ function SprintsPage({
   onStatusesChange,
   onUpdateItemEstimate,
   onUpdateSprintEstimates,
+  products,
+  currentEmail,
+  activeProductId,
   theme,
   onToggleTheme
 }: {
@@ -4363,22 +4239,33 @@ function SprintsPage({
   onStatusesChange: (statuses: SprintStatus[]) => void;
   onUpdateItemEstimate: (order: number, estimate: string) => void;
   onUpdateSprintEstimates: (estimates: Record<number, string>) => void;
+  /** Todos os projetos (produtos); a página lista os que contêm o membro logado. */
+  products: ProductAccess[];
+  currentEmail?: string;
+  activeProductId: string;
   theme: Theme;
   onToggleTheme: () => void;
 }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [searchTerm, setSearchTerm] = useState("");
+  const [collapsedProjects, toggleProject] = useCollapsedProjects(deliveriesCollapsedStorageKey);
+
+  const projectRows = products.filter((product) => !currentEmail || product.members.some((member) => member.email === currentEmail));
+  const defaultProductId = projectRows.find((product) => product.id === activeProductId)?.id ?? projectRows[0]?.id ?? "";
+  const itemProductId = (item: BacklogItem) => (item.productId && projectRows.some((product) => product.id === item.productId) ? item.productId : defaultProductId);
+  const isSprintProject = (product: ProductAccess) => (product.method ?? "sprint") === "sprint";
+  const hasSprintProject = projectRows.some(isSprintProject);
 
   return (
-    <main className="dashboard sprints-page">
-      <Topbar title="Sprints" subtitle="Visualize os itens por sprint e periodo" theme={theme} onToggleTheme={onToggleTheme} />
+    <main className="dashboard sprints-page deliveries-page">
+      <Topbar title="Entregas" subtitle="Acompanhe as entregas de cada projeto" theme={theme} onToggleTheme={onToggleTheme} />
 
       <section className="sprints-panel">
         <header className="sprints-toolbar">
           <div>
-            <h2>Calendario de sprints</h2>
-            <p>Itens entram aqui a partir da aba vinculada no Backlog.</p>
+            <h2>Entregas por projeto</h2>
+            <p>Cada projeto tem o seu bloco. Nos projetos Sprint, os itens entram a partir da aba vinculada no Backlog.</p>
           </div>
           <div className="sprints-actions">
             <label className="search-field sprints-search-field">
@@ -4391,7 +4278,59 @@ function SprintsPage({
             </button>
           </div>
         </header>
-        <BacklogCalendarView backlogItems={backlogItems} categories={categories} clients={clients} members={members} searchTerm={searchTerm} sprints={sprints} statuses={statuses} viewMode={viewMode} onSprintsChange={onSprintsChange} onUpdateItemEstimate={onUpdateItemEstimate} onUpdateSprintEstimates={onUpdateSprintEstimates} />
+
+        {!hasSprintProject && (
+          <p className="deliveries-empty" role="status">
+            Não há projetos no modelo sprint. Defina o método “Sprint” em um projeto na tela de Projetos para acompanhar as entregas por sprint.
+          </p>
+        )}
+
+        <div className="deliveries-list">
+          {projectRows.map((project) => {
+            const isCollapsed = collapsedProjects.includes(project.id);
+            const sprintProject = isSprintProject(project);
+            const projectItems = backlogItems.filter((item) => itemProductId(item) === project.id);
+
+            return (
+              <section className={`delivery-project ${isCollapsed ? "collapsed" : ""}`} key={project.id} aria-label={`Projeto ${project.name}`}>
+                <header className="delivery-project-head">
+                  <button
+                    aria-expanded={!isCollapsed}
+                    aria-label={`${isCollapsed ? "Ampliar" : "Reduzir"} projeto ${project.name}`}
+                    className="matrix-collapse"
+                    onClick={() => toggleProject(project.id)}
+                    title={isCollapsed ? "Ampliar projeto" : "Reduzir projeto"}
+                    type="button"
+                  >
+                    <ChevronDown className="matrix-chevron" size={18} />
+                  </button>
+                  <strong>{project.name}</strong>
+                  <span className={`matrix-method-tag ${project.method ?? "sprint"}`}>{projectMethodLabel[project.method ?? "sprint"]}</span>
+                  {sprintProject && <span className="matrix-row-count">{projectItems.length} item{projectItems.length === 1 ? "" : "s"}</span>}
+                </header>
+
+                {!isCollapsed &&
+                  (sprintProject ? (
+                    <BacklogCalendarView
+                      backlogItems={projectItems}
+                      categories={categories}
+                      clients={clients}
+                      members={project.members.length ? project.members : members}
+                      onSprintsChange={onSprintsChange}
+                      onUpdateItemEstimate={onUpdateItemEstimate}
+                      onUpdateSprintEstimates={onUpdateSprintEstimates}
+                      searchTerm={searchTerm}
+                      sprints={sprints}
+                      statuses={statuses}
+                      viewMode={viewMode}
+                    />
+                  ) : (
+                    <p className="delivery-note">Este projeto usa o método Kanban, então não há sprints para acompanhar aqui. Acompanhe os cards no Board.</p>
+                  ))}
+              </section>
+            );
+          })}
+        </div>
       </section>
       {isSettingsOpen && (
         <SprintSettingsModal
@@ -4454,150 +4393,6 @@ function SprintStatusPicker({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function SprintPointsModal({ breakdown, onClose }: { breakdown: SprintPointBreakdown; onClose: () => void }) {
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="create-item-panel modal-panel sprint-points-panel" role="dialog" aria-modal="true" aria-labelledby="sprint-points-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <h2 id="sprint-points-title">{breakdown.sprintName}</h2>
-            <p>{breakdown.totalPoints} story points estimados em {breakdown.totalHours}h.</p>
-          </div>
-          <button type="button" aria-label="Fechar" onClick={onClose}>
-            <X size={22} />
-          </button>
-        </header>
-        <div className="sprint-points-summary">
-          <strong>{breakdown.totalPoints}</strong>
-          <span>Story points</span>
-          <strong>{breakdown.totalHours}h</strong>
-          <span>Horas estimadas</span>
-        </div>
-        <div className="sprint-points-list">
-          {breakdown.categories.length === 0 ? (
-            <p>Nenhuma atividade com story point nesta sprint.</p>
-          ) : (
-            breakdown.categories.map((category) => (
-              <div className="sprint-points-row" key={category.category}>
-                <span>{category.category}</span>
-                <span>{category.items} itens</span>
-                <strong>{category.points} SP</strong>
-                <strong>{category.hours}h</strong>
-                <small>{category.rate}h por SP</small>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function SprintCapacityModal({
-  members,
-  onClose,
-  onSave,
-  sprint
-}: {
-  members: ProductMember[];
-  onClose: () => void;
-  onSave: (capacityByMember: Record<string, number>) => void;
-  sprint: SprintPlan;
-}) {
-  const [capacityByMember, setCapacityByMember] = useState<Record<string, number>>(() => ({ ...(sprint.capacityByMember ?? {}) }));
-  const businessDays = getBusinessDays(sprint.start, sprint.end);
-  const dailyCapacity = members.reduce((total, member) => total + (Number(capacityByMember[member.id]) || 0), 0);
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="create-item-panel modal-panel sprint-capacity-panel" role="dialog" aria-modal="true" aria-labelledby="sprint-capacity-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <h2 id="sprint-capacity-title">Capacity - {sprint.name}</h2>
-            <p>{businessDays} dias uteis no periodo da sprint.</p>
-          </div>
-          <button type="button" aria-label="Fechar" onClick={onClose}>
-            <X size={22} />
-          </button>
-        </header>
-        <div className="capacity-member-list">
-          {members.map((member) => (
-            <label key={member.id}>
-              <span>{member.name}</span>
-              <input
-                min={0}
-                type="number"
-                value={capacityByMember[member.id] ?? ""}
-                onChange={(event) => setCapacityByMember({ ...capacityByMember, [member.id]: Number(event.target.value) || 0 })}
-                placeholder="0"
-              />
-            </label>
-          ))}
-        </div>
-        <div className="capacity-total-strip">
-          <span>Capacity diario: <strong>{dailyCapacity}h</strong></span>
-          <span>Capacity total: <strong>{dailyCapacity * businessDays}h</strong></span>
-        </div>
-        <footer>
-          <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() =>
-              onSave(Object.fromEntries(members.map((member) => [member.id, Number(capacityByMember[member.id]) || 0])))
-            }
-          >
-            Salvar capacity
-          </button>
-        </footer>
-      </section>
-    </div>
-  );
-}
-
-function SprintCapacityBreakdownModal({ breakdown, onClose }: { breakdown: SprintCapacityBreakdown; onClose: () => void }) {
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="create-item-panel modal-panel sprint-capacity-panel" role="dialog" aria-modal="true" aria-labelledby="sprint-capacity-breakdown-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <h2 id="sprint-capacity-breakdown-title">Capacity - {breakdown.sprintName}</h2>
-            <p>{breakdown.totalCapacity}h totais em {breakdown.businessDays} dias uteis.</p>
-          </div>
-          <button type="button" aria-label="Fechar" onClick={onClose}>
-            <X size={22} />
-          </button>
-        </header>
-        <div className="capacity-total-strip">
-          <span>Capacity diario: <strong>{breakdown.dailyCapacity}h</strong></span>
-          <span>Sem squad: <strong>{breakdown.unassignedItems} atividades / {breakdown.unassignedHours}h</strong></span>
-        </div>
-        <div className="capacity-squad-list">
-          {breakdown.squads.length === 0 ? (
-            <p>Nenhuma empresa presente nos cards desta sprint.</p>
-          ) : (
-            breakdown.squads.map((squad) => (
-              <div className={`capacity-squad-row ${squad.hasSquad ? "with-squad" : "without-squad"}`} key={squad.clientName}>
-                <span>{squad.clientName}</span>
-                <small>{squad.items} atividades</small>
-                <strong>{squad.plannedHours}h planejadas</strong>
-                {squad.hasSquad ? (
-                  <>
-                    <strong className={squad.remainingHours < 0 ? "capacity-negative" : ""}>{squad.remainingHours}h restantes</strong>
-                    <small>Meta mensal: {squad.monthlyHours}h</small>
-                  </>
-                ) : (
-                  <small className="capacity-no-squad">Sem squad</small>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </section>
     </div>
   );
 }
