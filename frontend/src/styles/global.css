@@ -2211,7 +2211,7 @@ input[type="checkbox"] {
 
 .client-row.with-squad {
   border-color: #e6fcc6;
-  background: #f8f6ff;
+  background: #f6ffe8;
 }
 
 .client-icon {
@@ -2292,7 +2292,7 @@ input[type="checkbox"] {
 
 .permissions-products > button.active {
   border-color: #8fff00;
-  background: #f8f6ff;
+  background: #f6ffe8;
 }
 
 .permissions-products span,
@@ -3183,7 +3183,7 @@ input[type="checkbox"] {
 .daily-slide-layout nav button.active,
 .daily-slide-nav button.active {
   border-color: #8fff00;
-  background: #f8f6ff;
+  background: #f6ffe8;
   box-shadow: 0 12px 24px rgba(143, 255, 0, 0.12);
 }
 
@@ -3484,7 +3484,7 @@ input[type="checkbox"] {
 
 .retro-list-item.active {
   border-color: #8fff00;
-  background: #f8f6ff;
+  background: #f6ffe8;
 }
 
 .overview-slide h2,
@@ -7206,4 +7206,78 @@ input[type="checkbox"] {
 :root[data-theme="dark"] .matrix-method-tag.kanban {
   border-color: rgba(110, 168, 255, 0.55);
   color: #8fb8ff;
+}
+
+/* ===== Projetos (antiga Permissões) no modo escuro ===== */
+:root[data-theme="dark"] .permissions-products,
+:root[data-theme="dark"] .permissions-panel {
+  border-color: #353535;
+  background: rgba(27, 27, 27, 0.92);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+  color: #eeeeee;
+}
+
+:root[data-theme="dark"] .permissions-products h2,
+:root[data-theme="dark"] .permissions-members-header h2,
+:root[data-theme="dark"] .permissions-products strong {
+  color: #f5f5f5;
+}
+
+:root[data-theme="dark"] .permissions-products header button {
+  border-color: #353535;
+  background: #262626;
+  color: #eeeeee;
+}
+
+:root[data-theme="dark"] .permissions-products header button:hover {
+  border-color: #8fff00;
+  color: #8fff00;
+}
+
+:root[data-theme="dark"] .permissions-products > button {
+  border-color: #353535;
+  background: #222222;
+  color: #eeeeee;
+}
+
+:root[data-theme="dark"] .permissions-products > button:hover {
+  border-color: #4a4a4a;
+}
+
+:root[data-theme="dark"] .permissions-products > button.active {
+  border-color: #8fff00;
+  background: rgba(143, 255, 0, 0.1);
+}
+
+:root[data-theme="dark"] .permissions-products span,
+:root[data-theme="dark"] .permissions-members-header p {
+  color: #a8a8a8;
+}
+
+:root[data-theme="dark"] .permissions-panel label {
+  color: #a8a8a8;
+}
+
+:root[data-theme="dark"] .permissions-panel input,
+:root[data-theme="dark"] .permissions-panel select {
+  border-color: #353535;
+  background: #262626;
+  color: #f5f5f5;
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] .permissions-panel input:focus,
+:root[data-theme="dark"] .permissions-panel select:focus {
+  border-color: #8fff00;
+  outline: none;
+}
+
+:root[data-theme="dark"] .permissions-member-row button {
+  border-color: rgba(255, 123, 114, 0.45);
+  background: rgba(255, 123, 114, 0.1);
+  color: #ff7b72;
+}
+
+:root[data-theme="dark"] .permissions-member-row button:hover {
+  background: rgba(255, 123, 114, 0.2);
 }
