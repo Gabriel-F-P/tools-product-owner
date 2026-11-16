@@ -7343,3 +7343,60 @@ input[type="checkbox"] {
   font-size: 11px;
   font-weight: 700;
 }
+
+/* ===== Entregas: blocos recolhíveis por projeto ===== */
+.deliveries-list {
+  display: grid;
+  gap: 14px;
+}
+
+.delivery-project {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e1e1e1;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.delivery-project-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.delivery-project-head strong {
+  font-size: 16px;
+}
+
+.delivery-note,
+.deliveries-empty {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px dashed #cfcfcf;
+  border-radius: 10px;
+  line-height: 1.5;
+}
+
+.deliveries-empty {
+  margin-bottom: 14px;
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .delivery-project {
+  border-color: #353535;
+  background: rgba(24, 24, 24, 0.75);
+}
+
+:root[data-theme="dark"] .delivery-note {
+  border-color: #3a3a3a;
+  color: #a8a8a8;
+}
+
+:root[data-theme="dark"] .deliveries-empty {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: rgba(245, 158, 11, 0.1);
+}
