@@ -7400,3 +7400,208 @@ input[type="checkbox"] {
   border-color: rgba(245, 158, 11, 0.6);
   background: rgba(245, 158, 11, 0.1);
 }
+
+/* ===== Menu lateral com grupos (Sistemas / Maker) ===== */
+.sidebar {
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  margin-bottom: 36px;
+}
+
+.sidebar-nav {
+  gap: 6px;
+}
+
+.sidebar-nav > .nav-item,
+.nav-group-toggle {
+  min-height: 54px;
+  width: 100%;
+}
+
+.nav-group {
+  display: grid;
+  gap: 2px;
+}
+
+.nav-group-toggle .nav-group-chevron {
+  margin-left: auto;
+  color: #9a9a9a;
+  transition: transform 0.18s ease;
+}
+
+.nav-group.open .nav-group-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-group-toggle.has-active {
+  color: var(--brand-text);
+  font-weight: 650;
+}
+
+.nav-submenu {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 6px 30px;
+  padding-left: 12px;
+  border-left: 1px solid #e4e4e4;
+}
+
+.nav-subitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #5a5a5a;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.nav-subitem:hover,
+.sidebar-nav > .nav-item:hover,
+.nav-group-toggle:hover {
+  background: rgba(143, 255, 0, 0.06);
+}
+
+.nav-subitem.active {
+  color: var(--brand-text);
+  background: linear-gradient(135deg, rgba(143, 255, 0, 0.14), rgba(143, 255, 0, 0.05));
+  font-weight: 650;
+}
+
+.sidebar.collapsed .nav-group-chevron {
+  display: none;
+}
+
+.sidebar.collapsed .nav-group-toggle.has-active {
+  background: linear-gradient(135deg, rgba(143, 255, 0, 0.12), rgba(143, 255, 0, 0.05));
+}
+
+:root[data-theme="dark"] .nav-subitem {
+  color: #b5b5b5;
+}
+
+:root[data-theme="dark"] .nav-subitem.active,
+:root[data-theme="dark"] .nav-group-toggle.has-active {
+  color: #8fff00;
+}
+
+:root[data-theme="dark"] .nav-subitem.active {
+  background: linear-gradient(135deg, rgba(143, 255, 0, 0.2), rgba(143, 255, 0, 0.08));
+}
+
+:root[data-theme="dark"] .nav-submenu {
+  border-left-color: #303030;
+}
+
+/* ===== Cerimônias: seletor de projeto ===== */
+.ceremony-project-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid #e4e4e4;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.ceremony-project-bar label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.ceremony-project-bar select {
+  min-height: 40px;
+  min-width: 220px;
+  padding: 0 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  font: inherit;
+}
+
+.ceremony-project-bar p {
+  color: #707070;
+  font-size: 14px;
+}
+
+.ceremony-method-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(143, 255, 0, 0.18);
+  color: var(--brand-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ceremony-empty-projects {
+  padding: 32px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 10px;
+  text-align: center;
+  color: #707070;
+}
+
+.review-config-panel .rv-fields {
+  margin: 4px 0 12px;
+}
+
+.review-history-meta {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(143, 255, 0, 0.16);
+  color: var(--brand-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.review-error {
+  color: #d92d20;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .ceremony-project-bar {
+  border-color: #303030;
+  background: rgba(24, 24, 24, 0.82);
+}
+
+:root[data-theme="dark"] .ceremony-project-bar select {
+  border-color: #3a3a3a;
+  background: #1b1b1b;
+}
+
+:root[data-theme="dark"] .ceremony-project-bar p,
+:root[data-theme="dark"] .ceremony-empty-projects {
+  color: #a8a8a8;
+}
+
+.ceremony-model-grid.review-grid {
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+@media (max-width: 1100px) {
+  .ceremony-model-grid.review-grid {
+    grid-template-columns: 1fr;
+  }
+}

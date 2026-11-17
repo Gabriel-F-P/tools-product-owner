@@ -1422,3 +1422,96 @@
 .mt-room-side .mt-tabs button {
   white-space: nowrap;
 }
+
+/* ---------- Entregas (reviews) dentro da reunião ---------- */
+.mt-main-tabs {
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--mt-line);
+}
+
+.mt-deliveries {
+  display: grid;
+  gap: 12px;
+}
+
+.mt-deliveries-empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 48px 16px;
+  border: 1px dashed var(--mt-line);
+  border-radius: 10px;
+  color: var(--mt-muted);
+  text-align: center;
+}
+
+.mt-delivery-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mt-delivery-chips > button,
+.mt-delivery-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--mt-line);
+  border-radius: 999px;
+  background: var(--mt-soft);
+  color: var(--mt-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mt-delivery-chips > button {
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mt-delivery-chip button {
+  padding: 6px 4px 6px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mt-delivery-chip button.remove {
+  padding: 6px 10px 6px 4px;
+  color: var(--mt-muted);
+}
+
+.mt-delivery-chip button.remove:hover {
+  color: var(--mt-danger);
+}
+
+.mt-delivery-chips > button.active,
+.mt-delivery-chip.active {
+  border-color: var(--mt-brand);
+  background: rgba(143, 255, 0, 0.14);
+}
+
+.mt-delivery-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mt-brand-text) !important;
+  font-weight: 700;
+}
+
+/* Com a aba Entregas, o editor fica abaixo das abas. */
+.mt-room-editor:has(> .mt-main-tabs) {
+  flex-direction: column;
+}
+
+.mt-room-editor > .mt-main-tabs {
+  margin: 0;
+  padding: 4px 8px 0;
+}
+
+.mt-room-editor > .mt-deliveries {
+  padding: 16px;
+}

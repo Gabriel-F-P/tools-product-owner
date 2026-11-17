@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, CalendarDays, CheckSquare, ChevronDown, Clock, Pencil, Play, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckSquare, ChevronDown, Clock, Pencil, Play, Plus, Rocket, Search, Trash2, X } from "lucide-react";
 import { MeetingRoom } from "./MeetingRoom";
+import type { MeetingDeliveries } from "./MeetingRoom";
+import { ReviewPresentation, reviewLabel } from "../ceremonies/review";
 import { RichEditor } from "./RichEditor";
 import { ConfirmModal, Modal } from "./ui";
 import {
@@ -21,6 +23,7 @@ import "./meetings.css";
 type Tab = "history" | "topics";
 type View = { kind: "list" } | { kind: "detail"; id: string } | { kind: "room"; id: string };
 export type MeetingFocus = { id: string; mode: "room" | "detail" } | null;
+export type { MeetingDeliveries };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const tomorrowIso = () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -37,7 +40,8 @@ export function MeetingsPage({
   focus,
   onFocusConsumed,
   onMeetingsChange,
-  onTopicsChange
+  onTopicsChange,
+  deliveries
 }: {
   topbar: ReactNode;
   members: MemberLite[];
@@ -49,6 +53,8 @@ export function MeetingsPage({
   onFocusConsumed?: () => void;
   onMeetingsChange: (meetings: Meeting[]) => void;
   onTopicsChange: (topics: Topic[]) => void;
+  /** Projetos, sprints e reviews para o botão "Entregas" da sala de reunião. */
+  deliveries?: MeetingDeliveries;
 }) {
   const [tab, setTab] = useState<Tab>("history");
   const [view, setView] = useState<View>(() => (focus ? { kind: focus.mode, id: focus.id } : { kind: "list" }));
@@ -102,6 +108,7 @@ export function MeetingsPage({
     return (
       <main className="dashboard meetings-page mt">
         <MeetingRoom
+          deliveries={deliveries}
           meeting={roomMeeting}
           members={members}
           onExit={() => setView({ kind: "list" })}
@@ -119,6 +126,7 @@ export function MeetingsPage({
     return (
       <main className="dashboard meetings-page mt">
         <MeetingDetail
+          deliveries={deliveries}
           meeting={meeting}
           nameOf={nameOf}
           onBack={() => setView({ kind: "list" })}
@@ -151,6 +159,7 @@ export function MeetingsPage({
 
         {tab === "history" && (
           <HistoryTab
+            deliveries={deliveries}
             meetings={meetings}
             nameOf={nameOf}
             onOpen={(meeting) => setView({ kind: meeting.status === "in_progress" ? "room" : "detail", id: meeting.id })}
@@ -188,8 +197,10 @@ function HistoryTab({
   meetings,
   topics,
   nameOf,
-  onOpen
+  onOpen,
+  deliveries
 }: {
+  deliveries?: MeetingDeliveries;
   meetings: Meeting[];
   topics: Topic[];
   nameOf: (email: string) => string;
@@ -198,6 +209,11 @@ function HistoryTab({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [keyword, setKeyword] = useState("");
+  const deliveryLabels = (meeting: Meeting) =>
+    (meeting.reviewIds ?? [])
+      .map((id) => deliveries?.reviews.find((record) => record.id === id))
+      .filter((record): record is NonNullable<typeof record> => Boolean(record))
+      .map((record) => reviewLabel(record));
 
   const rows = useMemo(() => {
     const term = keyword.trim().toLowerCase();
@@ -215,14 +231,16 @@ function HistoryTab({
           ...meeting.memberEmails.map(nameOf),
           ...meeting.topicIds.map((id) => topics.find((topic) => topic.id === id)?.title ?? ""),
           ...meeting.results.map((result) => result.note ?? ""),
-          ...agendaLines(meeting.agenda)
+          ...agendaLines(meeting.agenda),
+          ...deliveryLabels(meeting)
         ]
           .join(" ")
           .toLowerCase();
 
         return haystack.includes(term);
       });
-  }, [from, keyword, meetings, nameOf, to, topics]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliveries?.reviews, from, keyword, meetings, nameOf, to, topics]);
 
   const hasFilter = Boolean(from || to || keyword);
 
@@ -269,6 +287,9 @@ function HistoryTab({
                   <strong>{meeting.title}</strong>
                   <small>{meeting.memberEmails.map(nameOf).join(", ") || "Sem participantes"}</small>
                   {snippet && <em>{snippet.slice(0, 160)}{snippet.length > 160 ? "…" : ""}</em>}
+                  {deliveryLabels(meeting).length > 0 && (
+                    <small className="mt-delivery-line"><Rocket size={13} /> Apresentado: {deliveryLabels(meeting).join(" · ")}</small>
+                  )}
                 </span>
                 <span className="mt-meeting-meta">
                   <span className={`mt-chip ${meeting.status}`}>{statusLabel(meeting.status)}</span>
@@ -291,8 +312,10 @@ function MeetingDetail({
   nameOf,
   onBack,
   onStart,
-  onDelete
+  onDelete,
+  deliveries
 }: {
+  deliveries?: MeetingDeliveries;
   meeting: Meeting;
   topics: Topic[];
   nameOf: (email: string) => string;
@@ -303,6 +326,11 @@ function MeetingDetail({
   const [isDeleting, setIsDeleting] = useState(false);
   const agenda = agendaLines(meeting.agenda);
   const isScheduled = meeting.status === "scheduled";
+  const meetingReviews = (meeting.reviewIds ?? [])
+    .map((id) => deliveries?.reviews.find((record) => record.id === id))
+    .filter((record): record is NonNullable<typeof record> => Boolean(record));
+  const [openReviewId, setOpenReviewId] = useState(meetingReviews[0]?.id ?? "");
+  const openReview = meetingReviews.find((record) => record.id === openReviewId);
 
   return (
     <div className="mt-detail">
@@ -346,6 +374,20 @@ function MeetingDetail({
             <section className="mt-detail-notes">
               <h2>Anotações</h2>
               <RichEditor key={meeting.id} readOnly value={meeting.content || "<p><em>Sem anotações.</em></p>"} />
+            </section>
+          )}
+
+          {meetingReviews.length > 0 && (
+            <section className="mt-detail-notes">
+              <h2>Entregas apresentadas</h2>
+              <div className="mt-delivery-chips">
+                {meetingReviews.map((record) => (
+                  <button className={record.id === openReviewId ? "active" : ""} key={record.id} onClick={() => setOpenReviewId(record.id)} type="button">
+                    <Rocket size={14} /> {reviewLabel(record)}
+                  </button>
+                ))}
+              </div>
+              {openReview && <ReviewPresentation compact record={openReview} />}
             </section>
           )}
 

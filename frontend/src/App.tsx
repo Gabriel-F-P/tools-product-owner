@@ -4,6 +4,7 @@ import {
   ArrowDown,
   ArrowUp,
   BarChart3,
+  Box,
   Bell,
   CalendarDays,
   Check,
@@ -24,6 +25,7 @@ import {
   GitBranch,
   Hand,
   KanbanSquare,
+  Layers,
   LayoutDashboard,
   LayoutGrid,
   ListFilter,
@@ -48,6 +50,7 @@ import {
   Trash2,
   UserRound,
   UsersRound,
+  Wrench,
   X
 } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -63,8 +66,26 @@ import { MeetingsPage } from "./meetings/MeetingsPage";
 import type { MeetingFocus } from "./meetings/MeetingsPage";
 import { beginMeeting } from "./meetings/types";
 import type { Meeting, Topic } from "./meetings/types";
+import { ReviewConfigFields, ReviewPresentation, brDateToIso, defaultReviewConfig, formatIso, reviewLabel, todayIso, validateReviewConfig } from "./ceremonies/review";
+import type { ReviewCard, ReviewConfig, ReviewProject, ReviewRecord, ReviewSprint } from "./ceremonies/review";
+import { MakerPage, emptyMakerData } from "./maker/MakerPage";
+import type { MakerData, MakerSection } from "./maker/types";
 
-type Page = "dashboard" | "backlog" | "board" | "sprints" | "reports" | "ceremonies" | "meetings" | "calendar" | "permissions";
+type Page =
+  | "dashboard"
+  | "backlog"
+  | "board"
+  | "sprints"
+  | "reports"
+  | "ceremonies"
+  | "meetings"
+  | "calendar"
+  | "permissions"
+  | "maker-orders"
+  | "maker-models"
+  | "maker-clients"
+  | "maker-materials"
+  | "maker-reports";
 type Theme = "light" | "dark";
 type ProjectMethod = "sprint" | "kanban";
 const projectMethodLabel: Record<ProjectMethod, string> = { sprint: "Sprint", kanban: "Kanban" };
@@ -101,6 +122,8 @@ type WorkspaceStateSnapshot = Partial<{
   dailyConfig: DailyRecord[];
   meetingsConfig: Meeting[];
   topicsConfig: Topic[];
+  reviewConfig: ReviewRecord[];
+  makerConfig: MakerData;
   initialVisibleTabs: number;
   planningConfig: PlanningRecord[];
   products: ProductAccess[];
@@ -182,6 +205,8 @@ interface RetroColumn {
 
 interface Retrospective {
   id: string;
+  /** Projeto em que a retro foi feita (registros antigos ficam no projeto padrão). */
+  projectId?: string;
   title: string;
   isOpen: boolean;
   columns: RetroColumn[];
@@ -189,6 +214,7 @@ interface Retrospective {
 
 interface PlanningRecord {
   id: string;
+  projectId?: string;
   title: string;
   sprintId: string;
   sprintName: string;
@@ -201,6 +227,7 @@ interface PlanningRecord {
 
 interface DailyRecord {
   id: string;
+  projectId?: string;
   title: string;
   date: string;
   sprintId: string;
@@ -235,16 +262,41 @@ const boardIconOptions = [
 
 const boardFieldTypes: BoardFieldType[] = ["Texto curto", "Texto longo", "Numero", "Data", "Lista", "Sim/Nao", "Pessoa"];
 
-const menuItems = [
+type MenuLink = { id: Page; label: string; icon: typeof LayoutDashboard };
+type MenuGroup = { id: string; label: string; icon: typeof LayoutDashboard; children: MenuLink[] };
+type MenuEntry = MenuLink | MenuGroup;
+
+const isMenuGroup = (entry: MenuEntry): entry is MenuGroup => "children" in entry;
+
+const menuItems: MenuEntry[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "backlog", label: "Backlog", icon: Table2 },
-  { id: "board", label: "Board", icon: PanelTop },
-  { id: "sprints", label: "Entregas", icon: KanbanSquare },
-  { id: "reports", label: "Relatorios", icon: BarChart3 },
-  { id: "ceremonies", label: "Cerimonias", icon: SquareKanban },
+  {
+    id: "sistemas",
+    label: "Sistemas",
+    icon: LayoutGrid,
+    children: [
+      { id: "backlog", label: "Backlog", icon: Table2 },
+      { id: "board", label: "Board", icon: PanelTop },
+      { id: "sprints", label: "Entregas", icon: KanbanSquare },
+      { id: "ceremonies", label: "Cerimônias", icon: SquareKanban },
+      { id: "reports", label: "Relatórios", icon: BarChart3 }
+    ]
+  },
+  {
+    id: "maker",
+    label: "Maker",
+    icon: Wrench,
+    children: [
+      { id: "maker-orders", label: "Pedidos", icon: ClipboardList },
+      { id: "maker-models", label: "Modelos", icon: Box },
+      { id: "maker-clients", label: "Clientes", icon: UserRound },
+      { id: "maker-materials", label: "Material", icon: Layers },
+      { id: "maker-reports", label: "Relatórios", icon: BarChart3 }
+    ]
+  },
   { id: "meetings", label: "Reuniões", icon: UsersRound },
   { id: "calendar", label: "Calendário", icon: CalendarDays }
-] satisfies Array<{ id: Page; label: string; icon: typeof LayoutDashboard }>;
+];
 
 const defaultProducts = [
   {
@@ -518,6 +570,8 @@ interface BoardCard {
   generalFields?: TaskFieldValue[];
   deliveryHistory?: DeliveryEntry[];
   done?: boolean;
+  /** AAAA-MM-DD em que o card chegou à aba de concluídos (usado na Review). */
+  doneAt?: string;
   /** Projeto (produto) ao qual o card pertence no board em matriz. */
   productId?: string;
 }
@@ -798,6 +852,8 @@ export function App() {
   const [dailyConfig, setDailyConfig] = useState<DailyRecord[]>([]);
   const [meetingsConfig, setMeetingsConfig] = useState<Meeting[]>([]);
   const [topicsConfig, setTopicsConfig] = useState<Topic[]>([]);
+  const [reviewConfig, setReviewConfig] = useState<ReviewRecord[]>([]);
+  const [makerConfig, setMakerConfig] = useState<MakerData>(emptyMakerData);
   const [meetingFocus, setMeetingFocus] = useState<MeetingFocus>(null);
   const [planningConfig, setPlanningConfig] = useState<PlanningRecord[]>([]);
   const [retroConfig, setRetroConfig] = useState<Retrospective[]>([]);
@@ -830,6 +886,8 @@ export function App() {
     if (snapshot.dailyConfig) setDailyConfig(snapshot.dailyConfig);
     if (snapshot.meetingsConfig) setMeetingsConfig(snapshot.meetingsConfig);
     if (snapshot.topicsConfig) setTopicsConfig(snapshot.topicsConfig);
+    if (snapshot.reviewConfig) setReviewConfig(snapshot.reviewConfig);
+    if (snapshot.makerConfig) setMakerConfig({ ...emptyMakerData, ...snapshot.makerConfig });
     if (typeof snapshot.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
     if (snapshot.planningConfig) setPlanningConfig(snapshot.planningConfig);
     if (snapshot.products) setProducts(snapshot.products);
@@ -903,6 +961,8 @@ export function App() {
         dailyConfig,
         meetingsConfig,
         topicsConfig,
+        reviewConfig,
+        makerConfig,
         initialVisibleTabs,
         planningConfig,
         products,
@@ -930,7 +990,7 @@ export function App() {
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
-  }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, dailyConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, meetingsConfig, planningConfig, products, retroConfig, sprintConfig, sprintStatusConfig, topicsConfig]);
+  }, [activeProductId, backlogConfig, boardConfig, categoryConfig, clientConfig, dailyConfig, initialVisibleTabs, isAuthenticated, isWorkspaceStateLoaded, makerConfig, meetingsConfig, planningConfig, products, retroConfig, reviewConfig, sprintConfig, sprintStatusConfig, topicsConfig]);
 
   useEffect(() => {
     if (!isAuthenticated || !isWorkspaceStateLoaded) {
@@ -968,6 +1028,80 @@ export function App() {
   const currentMember = activeProduct?.members.find((member) => member.email === authenticatedEmail) ?? activeProduct?.members[0];
   const currentPermission = currentMember?.permission ?? "Membro";
   const isAdmin = currentPermission === "Admin";
+  // Projetos do usuário logado (mesma regra do Board): só eles aparecem nas Cerimônias e nas Entregas das reuniões.
+  const userProjects = products.filter((product) => !currentMember?.email || product.members.some((member) => member.email === currentMember.email));
+  const defaultProjectId = userProjects.find((product) => product.id === activeProductId)?.id ?? userProjects[0]?.id ?? "";
+  const projectOf = (productId?: string) => productId || defaultProjectId;
+  const reviewProjects: ReviewProject[] = userProjects.map((product) => ({ id: product.id, name: product.name, method: product.method ?? "sprint" }));
+  const reviewSprints: ReviewSprint[] = sprintConfig.map((sprint) => ({ id: sprint.id, name: sprint.name, start: sprint.start, end: sprint.end, objective: sprint.objective }));
+  const activeSprintId = getActiveSprint(sprintConfig, sprintStatusConfig)?.id;
+
+  /** Monta a review (entregas) de um projeto: por sprint (projetos Sprint) ou por período (projetos Kanban). */
+  function buildReviewRecord(config: ReviewConfig, origin?: { meetingId: string; meetingTitle: string }): ReviewRecord | null {
+    const project = reviewProjects.find((item) => item.id === config.projectId);
+
+    if (!project) {
+      return null;
+    }
+
+    const base = {
+      id: `review-${Date.now()}`,
+      projectId: project.id,
+      projectName: project.name,
+      method: project.method,
+      createdAt: new Date().toISOString(),
+      createdBy: currentMember?.name,
+      meetingId: origin?.meetingId,
+      meetingTitle: origin?.meetingTitle
+    };
+
+    if (project.method === "sprint") {
+      const sprint = sprintConfig.find((item) => item.id === config.sprintId);
+
+      if (!sprint) {
+        return null;
+      }
+
+      const activeSprintName = getActiveSprint(sprintConfig, sprintStatusConfig)?.name;
+      const projectBacklogItems = sprintBacklogItems.filter((item) => projectOf(item.productId) === project.id);
+      const columns = mergeBoardColumnsWithSprintConnections(boardConfig, projectBacklogItems, sprint.name);
+      const entries = columns.flatMap((column) =>
+        column.cards
+          .filter((card) => projectOf(card.productId) === project.id && (card.sprint?.trim() || activeSprintName) === sprint.name)
+          .map((card) => ({ card, column }))
+      );
+
+      return {
+        ...base,
+        sprintId: sprint.id,
+        sprintName: sprint.name,
+        objective: sprint.objective,
+        from: brDateToIso(sprint.start) ?? todayIso(),
+        to: brDateToIso(sprint.end) ?? todayIso(),
+        delivered: entries.filter(({ card, column }) => isCardDone(card, column)).map(({ card, column }) => toReviewCard(card, column)),
+        pending: entries.filter(({ card, column }) => !isCardDone(card, column)).map(({ card, column }) => toReviewCard(card, column))
+      };
+    }
+
+    const from = config.from ?? todayIso();
+    const to = config.to ?? todayIso();
+    const entries = boardConfig.flatMap((column) =>
+      column.cards.filter((card) => projectOf(card.productId) === project.id).map((card) => ({ card, column }))
+    );
+
+    return {
+      ...base,
+      from,
+      to,
+      delivered: entries
+        .filter(({ card, column }) => {
+          const doneAt = getCardDoneAt(card, column);
+          return isCardDone(card, column) && Boolean(doneAt) && doneAt! >= from && doneAt! <= to;
+        })
+        .map(({ card, column }) => toReviewCard(card, column)),
+      pending: entries.filter(({ card, column }) => !isCardDone(card, column)).map(({ card, column }) => toReviewCard(card, column))
+    };
+  }
 
   function handleNavigate(nextPage: Page) {
     if (nextPage === "permissions" && !isAdmin) {
@@ -1142,6 +1276,14 @@ export function App() {
       {page === "reports" && <ReportsPage backlogColumns={backlogConfig} boardColumns={boardConfig} categories={categoryConfig} clients={clientConfig} theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
       {page === "ceremonies" && (
         <CeremoniesPage
+          activeSprintId={activeSprintId}
+          buildReview={buildReviewRecord}
+          defaultProjectId={defaultProjectId}
+          projectOf={projectOf}
+          projects={reviewProjects}
+          reviewSprints={reviewSprints}
+          reviews={reviewConfig}
+          onReviewsChange={setReviewConfig}
           backlogColumns={backlogConfig}
           boardColumns={boardConfig}
           dailyRecords={dailyConfig}
@@ -1164,6 +1306,19 @@ export function App() {
           onFocusConsumed={() => setMeetingFocus(null)}
           meetings={meetingsConfig}
           members={activeProduct.members.map((member) => ({ id: member.id, name: member.name, email: member.email }))}
+          deliveries={{
+            activeSprintId,
+            defaultProjectId,
+            projects: reviewProjects,
+            sprints: reviewSprints,
+            reviews: reviewConfig,
+            onGenerate: (config, meeting) => {
+              const record = buildReviewRecord(config, { meetingId: meeting.id, meetingTitle: meeting.title });
+              if (record) setReviewConfig((current) => [record, ...current]);
+              return record;
+            },
+            onDelete: (reviewId) => setReviewConfig((current) => current.filter((record) => record.id !== reviewId))
+          }}
           onMeetingsChange={setMeetingsConfig}
           onTopicsChange={setTopicsConfig}
           topbar={<Topbar title="Reuniões" subtitle="Histórico de reuniões e tópicos para levar à próxima." theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
@@ -1181,6 +1336,14 @@ export function App() {
       )}
       {page === "permissions" && isAdmin && <PermissionsPage theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
       {page === "dashboard" && <DashboardPage theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
+      {page.startsWith("maker-") && (
+        <MakerPage
+          data={makerConfig}
+          section={page.replace("maker-", "") as MakerSection}
+          onChange={setMakerConfig}
+          renderTopbar={(title, subtitle) => <Topbar title={title} subtitle={subtitle} theme={theme} onToggleTheme={() => setTheme(toggleTheme)} />}
+        />
+      )}
     </div>
     </SessionContext.Provider>
   );
@@ -1374,6 +1537,38 @@ function PermissionsPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme
 function getActiveSprint(sprints: SprintPlan[], statuses: SprintStatus[]) {
   const activeStatus = statuses.find((status) => status.name === "Em andamento");
   return sprints.find((sprint) => activeStatus ? sprint.statusId === activeStatus.id : sprint.name === currentSprint) ?? sprints[0];
+}
+
+/** Card concluído: marcado como feito ou na aba "Aprovado". */
+function isCardDone(card: BoardCard, column: BoardColumn) {
+  return Boolean(card.done) || column.title.toLowerCase().includes("aprovado");
+}
+
+/** Dia (AAAA-MM-DD) em que o card foi concluído: campo doneAt ou a movimentação para a aba de concluídos. */
+function getCardDoneAt(card: BoardCard, column: BoardColumn) {
+  if (card.doneAt) {
+    return card.doneAt;
+  }
+
+  const history = card.deliveryHistory ?? [];
+  const entry = [...history].reverse().find((item) => item.tabTitle === column.title) ?? history.at(-1);
+  return brDateToIso(entry?.movedAt);
+}
+
+function toReviewCard(card: BoardCard, column: BoardColumn): ReviewCard {
+  return {
+    id: card.linearIdentifier || card.id,
+    title: card.title,
+    owner: card.owner,
+    assistants: card.assistants,
+    priority: card.priority,
+    points: card.points || 0,
+    category: card.category,
+    client: card.client,
+    description: card.description,
+    status: column.title,
+    doneAt: isCardDone(card, column) ? getCardDoneAt(card, column) : undefined
+  };
 }
 
 function hydrateBoardColumns(columns: BoardColumn[]): BoardColumn[] {
@@ -1751,8 +1946,45 @@ function formatMovementDate() {
   }).format(new Date());
 }
 
+const sidebarGroupsStorageKey = "toolz-sidebar-open-groups";
+
 function Sidebar({ activePage, onNavigate, permission, productName }: { activePage: Page; onNavigate: (page: Page) => void; permission: UserPermission; productName: string }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const activeGroupId = menuItems.find((entry) => isMenuGroup(entry) && entry.children.some((child) => child.id === activePage))?.id;
+  const [openGroups, setOpenGroups] = useState<string[]>(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(sidebarGroupsStorageKey) ?? "null") as string[] | null;
+      return stored ?? ["sistemas"];
+    } catch {
+      return ["sistemas"];
+    }
+  });
+
+  // O grupo da página atual fica sempre aberto.
+  useEffect(() => {
+    if (activeGroupId && !openGroups.includes(activeGroupId)) {
+      setOpenGroups((current) => [...current, activeGroupId]);
+    }
+  }, [activeGroupId, openGroups]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(sidebarGroupsStorageKey, JSON.stringify(openGroups));
+    } catch {
+      // sem persistência: segue funcionando na sessão
+    }
+  }, [openGroups]);
+
+  function toggleGroup(groupId: string) {
+    if (isCollapsed) {
+      // Menu recolhido: expande e mostra os submenus do grupo.
+      setIsCollapsed(false);
+      setOpenGroups((current) => (current.includes(groupId) ? current : [...current, groupId]));
+      return;
+    }
+
+    setOpenGroups((current) => (current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]));
+  }
 
   return (
     <aside className={`sidebar ${isCollapsed ? "collapsed" : ""}`} aria-label="Menu lateral">
@@ -1776,19 +2008,58 @@ function Sidebar({ activePage, onNavigate, permission, productName }: { activePa
       </div>
 
       <nav className="sidebar-nav">
-        {menuItems.map((item) => (
-          <button
-            className={`nav-item ${activePage === item.id ? "active" : ""}`}
-            key={item.id}
-            aria-label={item.label}
-            title={isCollapsed ? item.label : undefined}
-            type="button"
-            onClick={() => onNavigate(item.id)}
-          >
-            <item.icon size={21} strokeWidth={1.9} />
-            <span>{item.label}</span>
-          </button>
-        ))}
+        {menuItems.map((item) => {
+          if (!isMenuGroup(item)) {
+            return (
+              <button
+                className={`nav-item ${activePage === item.id ? "active" : ""}`}
+                key={item.id}
+                aria-label={item.label}
+                title={isCollapsed ? item.label : undefined}
+                type="button"
+                onClick={() => onNavigate(item.id)}
+              >
+                <item.icon size={21} strokeWidth={1.9} />
+                <span>{item.label}</span>
+              </button>
+            );
+          }
+
+          const isOpen = openGroups.includes(item.id) && !isCollapsed;
+          const hasActiveChild = item.id === activeGroupId;
+
+          return (
+            <div className={`nav-group ${isOpen ? "open" : ""}`} key={item.id}>
+              <button
+                aria-expanded={isOpen}
+                aria-label={item.label}
+                className={`nav-item nav-group-toggle ${hasActiveChild ? "has-active" : ""}`}
+                title={isCollapsed ? item.label : undefined}
+                type="button"
+                onClick={() => toggleGroup(item.id)}
+              >
+                <item.icon size={21} strokeWidth={1.9} />
+                <span>{item.label}</span>
+                <ChevronDown className="nav-group-chevron" size={16} />
+              </button>
+              {isOpen && (
+                <div className="nav-submenu" role="group" aria-label={item.label}>
+                  {item.children.map((child) => (
+                    <button
+                      className={`nav-subitem ${activePage === child.id ? "active" : ""}`}
+                      key={child.id}
+                      type="button"
+                      onClick={() => onNavigate(child.id)}
+                    >
+                      <child.icon size={17} strokeWidth={1.9} />
+                      <span>{child.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
     </aside>
@@ -2081,7 +2352,18 @@ function RollbackChart() {
   );
 }
 
+type CeremonyName = "Planning" | "Daily" | "Review" | "Retrospectiva";
+const ceremonyProjectStorageKey = "toolz-ceremony-project";
+
 function CeremoniesPage({
+  projects,
+  projectOf,
+  defaultProjectId,
+  reviewSprints,
+  reviews,
+  onReviewsChange,
+  buildReview,
+  activeSprintId,
   backlogColumns,
   boardColumns,
   dailyRecords,
@@ -2096,6 +2378,15 @@ function CeremoniesPage({
   theme,
   onToggleTheme
 }: {
+  /** Projetos do usuário logado: só eles podem ser escolhidos. */
+  projects: ReviewProject[];
+  projectOf: (productId?: string) => string;
+  defaultProjectId: string;
+  reviewSprints: ReviewSprint[];
+  reviews: ReviewRecord[];
+  onReviewsChange: (reviews: ReviewRecord[]) => void;
+  buildReview: (config: ReviewConfig) => ReviewRecord | null;
+  activeSprintId?: string;
   backlogColumns: BacklogColumn[];
   boardColumns: BoardColumn[];
   dailyRecords: DailyRecord[];
@@ -2110,32 +2401,80 @@ function CeremoniesPage({
   theme: Theme;
   onToggleTheme: () => void;
 }) {
-  const [ceremony, setCeremony] = useState<"Planning" | "Daily" | "Review" | "Retrospectiva">("Planning");
+  const [ceremony, setCeremony] = useState<CeremonyName>("Planning");
+  const [projectId, setProjectId] = useState(() => window.localStorage.getItem(ceremonyProjectStorageKey) ?? defaultProjectId);
+  const project = projects.find((item) => item.id === projectId) ?? projects.find((item) => item.id === defaultProjectId) ?? projects[0];
+
+  function chooseProject(nextProjectId: string) {
+    setProjectId(nextProjectId);
+    try {
+      window.localStorage.setItem(ceremonyProjectStorageKey, nextProjectId);
+    } catch {
+      // sem persistência: a escolha vale só nesta sessão
+    }
+  }
 
   return (
     <main className="dashboard ceremonies-page">
-      <Topbar title="3. Cerimonias" subtitle="Acompanhe e conduza as cerimonias do time de forma estruturada." theme={theme} onToggleTheme={onToggleTheme} />
-      <section className="workspace-panel ceremony-model-panel">
-        <div className="segmented-control ceremony-tabs">
-          {["Planning", "Daily", "Review", "Retrospectiva"].map((item) => (
-            <button className={ceremony === item ? "active" : ""} type="button" key={item} onClick={() => setCeremony(item as typeof ceremony)}>{item}</button>
-          ))}
-        </div>
-        {ceremony === "Planning" && <PlanningCeremony backlogColumns={backlogColumns} planningRecords={planningRecords} onPlanningRecordsChange={onPlanningRecordsChange} sprints={sprints} />}
-        {ceremony === "Daily" && <DailyCeremony boardColumns={boardColumns} dailyRecords={dailyRecords} onDailyRecordsChange={onDailyRecordsChange} sprintBacklogItems={sprintBacklogItems} sprints={sprints} sprintStatuses={sprintStatuses} />}
-        {ceremony === "Review" && <ReviewCeremony boardColumns={boardColumns} sprints={sprints} />}
-        {ceremony === "Retrospectiva" && <RetroCeremony retrospectives={retrospectives} onRetrospectivesChange={onRetrospectivesChange} />}
-      </section>
+      <Topbar title="Cerimônias" subtitle="Escolha o projeto e conduza as cerimônias do time de forma estruturada." theme={theme} onToggleTheme={onToggleTheme} />
+      {!project ? (
+        <section className="workspace-panel ceremony-model-panel">
+          <p className="ceremony-empty-projects">Você ainda não participa de nenhum projeto. Peça a um administrador para incluir você em um projeto na tela de Projetos.</p>
+        </section>
+      ) : (
+        <section className="workspace-panel ceremony-model-panel">
+          <div className="ceremony-project-bar">
+            <label>
+              Projeto
+              <select value={project.id} onChange={(event) => chooseProject(event.target.value)}>
+                {projects.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </label>
+            <span className="ceremony-method-tag">{projectMethodLabel[project.method]}</span>
+            <p>
+              {project.method === "sprint"
+                ? "Projeto em sprints: Planning, Daily e Review usam a sprint escolhida."
+                : "Projeto Kanban: a Review é montada pelo período que você escolher."}
+            </p>
+          </div>
+          <div className="segmented-control ceremony-tabs">
+            {(["Planning", "Daily", "Review", "Retrospectiva"] as CeremonyName[]).map((item) => (
+              <button className={ceremony === item ? "active" : ""} type="button" key={item} onClick={() => setCeremony(item)}>{item}</button>
+            ))}
+          </div>
+          {ceremony === "Planning" && <PlanningCeremony key={project.id} project={project} projectOf={projectOf} backlogColumns={backlogColumns} planningRecords={planningRecords} onPlanningRecordsChange={onPlanningRecordsChange} sprints={sprints} />}
+          {ceremony === "Daily" && <DailyCeremony key={project.id} project={project} projectOf={projectOf} boardColumns={boardColumns} dailyRecords={dailyRecords} onDailyRecordsChange={onDailyRecordsChange} sprintBacklogItems={sprintBacklogItems} sprints={sprints} sprintStatuses={sprintStatuses} />}
+          {ceremony === "Review" && (
+            <ReviewCeremony
+              key={project.id}
+              activeSprintId={activeSprintId}
+              buildReview={buildReview}
+              onReviewsChange={onReviewsChange}
+              project={project}
+              projectOf={projectOf}
+              reviews={reviews}
+              sprints={reviewSprints}
+            />
+          )}
+          {ceremony === "Retrospectiva" && <RetroCeremony key={project.id} project={project} projectOf={projectOf} retrospectives={retrospectives} onRetrospectivesChange={onRetrospectivesChange} />}
+        </section>
+      )}
     </main>
   );
 }
 
 function PlanningCeremony({
+  project,
+  projectOf,
   backlogColumns,
   planningRecords,
   onPlanningRecordsChange,
   sprints
 }: {
+  project: ReviewProject;
+  projectOf: (productId?: string) => string;
   backlogColumns: BacklogColumn[];
   planningRecords: PlanningRecord[];
   onPlanningRecordsChange: (planningRecords: PlanningRecord[]) => void;
@@ -2146,8 +2485,14 @@ function PlanningCeremony({
   const [isPresentationExpanded, setIsPresentationExpanded] = useState(false);
   const [selectedSprintId, setSelectedSprintId] = useState(sprints.find((currentSprint) => currentSprint.statusId === "active")?.id ?? sprints[0]?.id ?? "");
   const sprint = sprints.find((currentSprint) => currentSprint.id === selectedSprintId) ?? sprints[0];
-  const selectedRecord = planningRecords.find((planning) => planning.id === selectedPlanningId);
-  const sprintItems = getPlanningItemsForSprint(backlogColumns, sprint?.name);
+  const isSprintProject = project.method === "sprint";
+  const projectPlannings = planningRecords.filter((planning) => projectOf(planning.projectId) === project.id);
+  const selectedRecord = projectPlannings.find((planning) => planning.id === selectedPlanningId);
+  const ofProject = (list: BacklogItem[]) => list.filter((item) => projectOf(item.productId) === project.id);
+  // Sprint: itens da sprint escolhida. Kanban: itens prontos para execução (abas do backlog ligadas à entrega).
+  const sprintItems = isSprintProject
+    ? ofProject(getPlanningItemsForSprint(backlogColumns, sprint?.name))
+    : ofProject(backlogColumns.filter((column) => column.addToSprint).flatMap((column) => flattenBacklogEntries(column.entries)));
   const activePlanning = mode === "detail" ? selectedRecord : undefined;
   const items = activePlanning?.items ?? [];
   const totalPoints = items.reduce((total, item) => total + (item.storyPoints ?? 0), 0);
@@ -2160,18 +2505,20 @@ function PlanningCeremony({
   }
 
   function generatePlanning() {
-    if (!sprint) {
+    if (isSprintProject && !sprint) {
       return;
     }
 
+    const today = new Date().toLocaleDateString("pt-BR");
     const planning: PlanningRecord = {
       id: `planning-${Date.now()}`,
-      title: `Planning - ${sprint.name}`,
-      sprintId: sprint.id,
-      sprintName: sprint.name,
-      start: sprint.start,
-      end: sprint.end,
-      objective: sprint.objective,
+      projectId: project.id,
+      title: isSprintProject && sprint ? `Planning - ${sprint.name} - ${project.name}` : `Planning - ${project.name} - ${today}`,
+      sprintId: isSprintProject && sprint ? sprint.id : "",
+      sprintName: isSprintProject && sprint ? sprint.name : "Kanban",
+      start: isSprintProject && sprint ? sprint.start : today,
+      end: isSprintProject && sprint ? sprint.end : today,
+      objective: isSprintProject && sprint ? sprint.objective : "Organizar os itens prontos para execução no fluxo contínuo.",
       createdAt: new Date().toLocaleDateString("pt-BR"),
       items: sprintItems.map((item) => ({ ...item }))
     };
@@ -2209,9 +2556,9 @@ function PlanningCeremony({
             </div>
             <button className="primary-button" type="button" onClick={createPlanning}><Plus size={16} />Nova Planning</button>
           </header>
-          {planningRecords.length > 0 ? (
+          {projectPlannings.length > 0 ? (
             <div className="planning-history-list">
-              {planningRecords.map((planning) => (
+              {projectPlannings.map((planning) => (
                 <article className="planning-history-item" key={planning.id}>
                   <div>
                     <span>{planning.sprintName}</span>
@@ -2250,8 +2597,8 @@ function PlanningCeremony({
       <aside className="ceremony-config-panel">
         <button className="secondary-button" type="button" onClick={() => setMode("list")}><ChevronLeft size={16} />Voltar ao historico</button>
         <h3>{mode === "detail" ? "Planning salva" : "Configurar Planning"}</h3>
-        <label><span>Selecione a Sprint</span><select value={selectedSprintId} onChange={(event) => setSelectedSprintId(event.target.value)}>{sprints.map((currentSprint) => <option value={currentSprint.id} key={currentSprint.id}>{currentSprint.name}</option>)}</select></label>
-        <div className="planning-sprint-preview"><strong>{sprintItems.length}</strong><span>tarefas vinculadas a {sprint?.name ?? "sprint"}</span></div>
+        {isSprintProject && <label><span>Selecione a Sprint</span><select value={selectedSprintId} onChange={(event) => setSelectedSprintId(event.target.value)}>{sprints.map((currentSprint) => <option value={currentSprint.id} key={currentSprint.id}>{currentSprint.name}</option>)}</select></label>}
+        <div className="planning-sprint-preview"><strong>{sprintItems.length}</strong><span>{isSprintProject ? `tarefas vinculadas a ${sprint?.name ?? "sprint"}` : "itens prontos para execução no projeto"}</span></div>
         {mode === "create" && <button className="primary-button" type="button" onClick={generatePlanning}>Gerar apresentacao <Play size={15} /></button>}
         {mode === "detail" && selectedRecord && <button className="danger-secondary-button" type="button" onClick={() => deletePlanning(selectedRecord.id)}>Excluir planning</button>}
         <div className="ceremony-help-card"><strong>Sobre o Planning</strong><p>A apresentacao usa automaticamente os cards vinculados a sprint escolhida. Os dados aparecem somente apos gerar a apresentacao.</p></div>
@@ -2296,6 +2643,8 @@ function PlanningCeremony({
 }
 
 function DailyCeremony({
+  project,
+  projectOf,
   boardColumns,
   dailyRecords,
   onDailyRecordsChange,
@@ -2303,6 +2652,8 @@ function DailyCeremony({
   sprints,
   sprintStatuses
 }: {
+  project: ReviewProject;
+  projectOf: (productId?: string) => string;
   boardColumns: BoardColumn[];
   dailyRecords: DailyRecord[];
   onDailyRecordsChange: (dailyRecords: DailyRecord[]) => void;
@@ -2320,11 +2671,21 @@ function DailyCeremony({
   const [selectedDailyColumnIndex, setSelectedDailyColumnIndex] = useState(0);
   const [selectedDailyMemberIndex, setSelectedDailyMemberIndex] = useState(0);
   const selectedSprint = sprints.find((sprint) => sprint.id === selectedSprintId) ?? activeSprint ?? sprints[0];
-  const sprintColumns = selectedSprint
-    ? mergeBoardColumnsWithSprintConnections(boardColumns, sprintBacklogItems, selectedSprint.name)
-    : boardColumns;
+  const isSprintProject = project.method === "sprint";
+  const projectDailies = dailyRecords.filter((daily) => projectOf(daily.projectId) === project.id);
+  // Só os cards do projeto escolhido; em projetos Sprint, só os da sprint selecionada.
+  const sprintColumns = (isSprintProject && selectedSprint
+    ? mergeBoardColumnsWithSprintConnections(boardColumns, sprintBacklogItems.filter((item) => projectOf(item.productId) === project.id), selectedSprint.name)
+    : boardColumns
+  ).map((column) => ({
+    ...column,
+    cards: column.cards.filter((card) =>
+      projectOf(card.productId) === project.id &&
+      (!isSprintProject || (card.sprint?.trim() || activeSprint?.name) === selectedSprint?.name)
+    )
+  }));
   const allSprintCards = sprintColumns.flatMap((column) => column.cards);
-  const selectedDaily = dailyRecords.find((daily) => daily.id === selectedDailyId);
+  const selectedDaily = projectDailies.find((daily) => daily.id === selectedDailyId);
   const activeDaily = screenMode === "detail" ? selectedDaily : undefined;
   const cards = activeDaily?.cards ?? [];
   const activeDailyColumn = activeDaily?.columns[selectedDailyColumnIndex] ?? activeDaily?.columns[0];
@@ -2352,16 +2713,17 @@ function DailyCeremony({
   }
 
   function generateDaily() {
-    if (!selectedSprint) {
+    if (isSprintProject && !selectedSprint) {
       return;
     }
 
     const daily: DailyRecord = {
       id: `daily-${Date.now()}`,
-      title: `Daily - ${selectedSprint.name}`,
+      projectId: project.id,
+      title: isSprintProject && selectedSprint ? `Daily - ${selectedSprint.name} - ${project.name}` : `Daily - ${project.name}`,
       date: dailyDate,
-      sprintId: selectedSprint.id,
-      sprintName: selectedSprint.name,
+      sprintId: isSprintProject && selectedSprint ? selectedSprint.id : "",
+      sprintName: isSprintProject && selectedSprint ? selectedSprint.name : "Kanban",
       displayMode,
       createdAt: new Date().toLocaleDateString("pt-BR"),
       cards: allSprintCards.map((card) => ({ ...card })),
@@ -2400,9 +2762,9 @@ function DailyCeremony({
             </div>
             <button className="primary-button" type="button" onClick={createDaily}><Plus size={16} />Nova Daily</button>
           </header>
-          {dailyRecords.length > 0 ? (
+          {projectDailies.length > 0 ? (
             <div className="planning-history-list">
-              {dailyRecords.map((daily) => (
+              {projectDailies.map((daily) => (
                 <article className="planning-history-item" key={daily.id}>
                   <div>
                     <span>{daily.displayMode === "membro" ? "Membros" : "Tarefas"}</span>
@@ -2431,7 +2793,7 @@ function DailyCeremony({
 
   return (
     <div className="ceremony-model-grid">
-      <aside className="ceremony-config-panel"><button className="secondary-button" type="button" onClick={() => setScreenMode("list")}><ChevronLeft size={16} />Voltar ao historico</button><h3>{screenMode === "detail" ? "Daily salva" : "Configurar Daily"}</h3><label><span>Selecione a data</span><input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} /></label><label><span>Selecione a sprint</span><select value={selectedSprintId} onChange={(event) => setSelectedSprintId(event.target.value)}>{sprints.map((sprint) => <option value={sprint.id} key={sprint.id}>{sprint.name}</option>)}</select></label><label><span>Modo da Daily</span><select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as "membro" | "tarefas")}><option value="membro">Por responsavel</option><option value="tarefas">Por aba</option></select></label><div className="planning-sprint-preview"><strong>{allSprintCards.length}</strong><span>cards em {sprintColumns.length} abas da {selectedSprint?.name ?? "sprint"}</span></div>{screenMode === "create" && <button className="primary-button" type="button" onClick={generateDaily}>Gerar apresentacao <Play size={15} /></button>}{screenMode === "detail" && activeDaily && <button className="danger-secondary-button" type="button" onClick={() => deleteDaily(activeDaily.id)}>Excluir daily</button>}<div className="ceremony-help-card"><strong>Sobre a Daily</strong><p>O modo por responsavel cria uma pagina por pessoa e agrupa os cards pelas abas da sprint.</p></div></aside>
+      <aside className="ceremony-config-panel"><button className="secondary-button" type="button" onClick={() => setScreenMode("list")}><ChevronLeft size={16} />Voltar ao historico</button><h3>{screenMode === "detail" ? "Daily salva" : "Configurar Daily"}</h3><label><span>Selecione a data</span><input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} /></label>{isSprintProject && <label><span>Selecione a sprint</span><select value={selectedSprintId} onChange={(event) => setSelectedSprintId(event.target.value)}>{sprints.map((sprint) => <option value={sprint.id} key={sprint.id}>{sprint.name}</option>)}</select></label>}<label><span>Modo da Daily</span><select value={displayMode} onChange={(event) => setDisplayMode(event.target.value as "membro" | "tarefas")}><option value="membro">Por responsavel</option><option value="tarefas">Por aba</option></select></label><div className="planning-sprint-preview"><strong>{allSprintCards.length}</strong><span>cards em {sprintColumns.length} abas {isSprintProject ? `da ${selectedSprint?.name ?? "sprint"}` : `do projeto ${project.name}`}</span></div>{screenMode === "create" && <button className="primary-button" type="button" onClick={generateDaily}>Gerar apresentacao <Play size={15} /></button>}{screenMode === "detail" && activeDaily && <button className="danger-secondary-button" type="button" onClick={() => deleteDaily(activeDaily.id)}>Excluir daily</button>}<div className="ceremony-help-card"><strong>Sobre a Daily</strong><p>O modo por responsavel cria uma pagina por pessoa e agrupa os cards pelas abas da sprint.</p></div></aside>
       <section className={`ceremony-presentation daily-presentation ${isPresentationExpanded ? "ceremony-presentation-expanded" : ""}`}>
         {activeDaily ? (
           <>
@@ -2533,16 +2895,145 @@ function getPlanningItemsForSprint(backlogColumns: BacklogColumn[], sprintName?:
   return backlogColumns.flatMap((column) => flattenBacklogEntries(column.entries)).filter((item) => item.sprint === sprintName);
 }
 
-function ReviewCeremony({ boardColumns, sprints }: { boardColumns: BoardColumn[]; sprints: SprintPlan[] }) {
-  const [selectedSprintId, setSelectedSprintId] = useState(sprints[0]?.id ?? "");
-  const doneCards = boardColumns.flatMap((column) => column.cards.filter((card) => column.title.toLowerCase().includes("aprovado") || card.done));
-  const sprint = sprints.find((currentSprint) => currentSprint.id === selectedSprintId) ?? sprints[0];
+function ReviewCeremony({
+  project,
+  projectOf,
+  sprints,
+  reviews,
+  onReviewsChange,
+  buildReview,
+  activeSprintId
+}: {
+  project: ReviewProject;
+  projectOf: (productId?: string) => string;
+  sprints: ReviewSprint[];
+  reviews: ReviewRecord[];
+  onReviewsChange: (reviews: ReviewRecord[]) => void;
+  buildReview: (config: ReviewConfig) => ReviewRecord | null;
+  activeSprintId?: string;
+}) {
+  const [mode, setMode] = useState<"list" | "create" | "detail">("list");
+  const [selectedId, setSelectedId] = useState("");
+  const [config, setConfig] = useState<ReviewConfig>(() => defaultReviewConfig([project], sprints, project.id, activeSprintId));
+  const [error, setError] = useState("");
+  const projectReviews = reviews.filter((record) => projectOf(record.projectId) === project.id);
+  const selected = projectReviews.find((record) => record.id === selectedId);
+  const isSprintProject = project.method === "sprint";
+
+  function generate() {
+    const message = validateReviewConfig(config, [project]);
+    if (message) {
+      setError(message);
+      return;
+    }
+
+    const record = buildReview({ ...config, projectId: project.id });
+    if (!record) {
+      setError("Não foi possível gerar a review com essas opções.");
+      return;
+    }
+
+    onReviewsChange([record, ...reviews]);
+    setSelectedId(record.id);
+    setError("");
+    setMode("detail");
+  }
+
+  function remove(recordId: string) {
+    if (!window.confirm("Deseja excluir esta review?")) {
+      return;
+    }
+
+    onReviewsChange(reviews.filter((record) => record.id !== recordId));
+    if (selectedId === recordId) {
+      setSelectedId("");
+      setMode("list");
+    }
+  }
+
+  if (mode === "list") {
+    return (
+      <div className="planning-history-layout">
+        <section className="ceremony-presentation planning-history-panel">
+          <header className="planning-history-header">
+            <div>
+              <h2>Reviews</h2>
+              <p>Histórico das entregas apresentadas neste projeto, inclusive as geradas nas reuniões.</p>
+            </div>
+            <button className="primary-button" type="button" onClick={() => { setError(""); setMode("create"); }}><Plus size={16} />Nova Review</button>
+          </header>
+          {projectReviews.length > 0 ? (
+            <div className="planning-history-list">
+              {projectReviews.map((record) => (
+                <article className="planning-history-item" key={record.id}>
+                  <div>
+                    <span>
+                      {record.method === "sprint" ? record.sprintName : "Período"}
+                      {record.meetingTitle && <em className="review-history-meta">Reunião</em>}
+                    </span>
+                    <h3>{reviewLabel(record)}</h3>
+                    <p>
+                      {formatIso(record.from)} - {formatIso(record.to)} - {record.delivered.length} entregas - criada em {new Date(record.createdAt).toLocaleDateString("pt-BR")}
+                      {record.meetingTitle ? ` - reunião “${record.meetingTitle}”` : ""}
+                    </p>
+                  </div>
+                  <strong>{record.delivered.reduce((total, card) => total + (card.points || 0), 0)} pts</strong>
+                  <button type="button" onClick={() => { setSelectedId(record.id); setMode("detail"); }}>Acessar</button>
+                  <button className="danger-icon-button" type="button" onClick={() => remove(record.id)} aria-label="Excluir review"><X size={16} /></button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="planning-empty-state">
+              <CheckCircle2 size={42} />
+              <h3>Nenhuma review criada</h3>
+              <p>{isSprintProject ? "Escolha uma sprint para apresentar o que foi entregue nela." : "Escolha um período para apresentar o que foi entregue nele."}</p>
+            </div>
+          )}
+        </section>
+        <aside className="ceremony-context-panel">
+          <h3>Sobre a Cerimônia</h3>
+          <strong>Review</strong>
+          <p>{isSprintProject ? "Mostra o que foi concluído na sprint escolhida e o que ficou pendente." : "Mostra o que foi concluído no período escolhido (por padrão, a última semana) e o que segue em andamento."}</p>
+          <hr />
+          <strong>O que será incluído</strong>
+          <ul><li>Resumo de entregas e pontos</li><li>Entregas por responsável</li><li>Um slide por card concluído</li><li>{isSprintProject ? "Itens não concluídos" : "Itens em andamento"}</li></ul>
+        </aside>
+        <CeremonySteps />
+      </div>
+    );
+  }
+
+  const record = mode === "detail" ? selected : undefined;
 
   return (
-    <div className="ceremony-model-grid">
-      <aside className="ceremony-config-panel"><h3>Configurar Review</h3><label><span>Selecione a Sprint</span><select value={selectedSprintId} onChange={(event) => setSelectedSprintId(event.target.value)}>{sprints.map((currentSprint) => <option value={currentSprint.id} key={currentSprint.id}>{currentSprint.name}</option>)}</select></label><button className="primary-button" type="button">Gerar apresentacao <Play size={15} /></button><div className="ceremony-help-card"><strong>Sobre a Review</strong><p>Use a review para apresentar entregas, resultados e aprendizados da sprint.</p></div></aside>
-      <section className="ceremony-presentation"><header className="presentation-toolbar"><div className="presentation-nav"><button type="button"><ChevronLeft size={16} /></button><span>1 / {Math.max(doneCards.length + 1, 1)}</span><button type="button"><ChevronRight size={16} /></button></div><div className="presentation-actions"><button type="button"><LayoutGrid size={15} />Tela cheia</button><button type="button" onClick={() => window.print()}><FileSpreadsheet size={15} />Exportar PDF</button></div></header><article className="planning-hero-slide ceremony-slide"><div className="planning-hero-copy"><span>{sprint?.name ?? "Sprint"}</span><h2>Review</h2><p>{sprint?.start} - {sprint?.end}</p></div><div className="planning-target"><CheckCircle2 size={66} /><CalendarDays size={42} /></div><div className="planning-kpis"><span><small>Objetivo</small>{sprint?.objective}</span><span><small>Entregas</small><strong>{doneCards.length}</strong> cards</span><span><small>Membros</small><strong>{boardMembers.length}</strong> membros</span><span><small>Progresso</small><strong>100%</strong> demo</span></div></article><article className="planning-task-slide ceremony-slide"><span className="slide-count">1 / {Math.max(doneCards.length, 1)}</span><h3>{doneCards[0]?.title ?? "Nenhuma entrega concluida"}</h3><p>{doneCards[0] ? "Card pronto para apresentacao na review da sprint." : "Cards aprovados aparecerao aqui quando existirem entregas."}</p><div className="task-slide-grid"><span><small>Responsavel</small>{doneCards[0]?.owner || "Sem responsavel"}</span><span><small>Prioridade</small>{doneCards[0]?.priority ?? "Media"}</span><span><small>Story Points</small>{doneCards[0]?.points ?? 0} pts</span><span><small>Sprint</small>{sprint?.name}</span><strong>{doneCards[0]?.points ?? 0} pts</strong></div></article><div className="slide-dots">{Array.from({ length: 6 }).map((_, index) => <i className={index === 0 ? "active" : ""} key={index} />)}</div></section>
-      <aside className="ceremony-context-panel"><h3>Sobre a Cerimonia</h3><strong>Review</strong><p>Mostra entregas finalizadas e ajuda a conduzir a demonstracao para stakeholders.</p><hr /><strong>O que sera incluido</strong><ul><li>Resumo da sprint</li><li>Cards concluidos</li><li>Responsaveis e pontos</li></ul><div className="ceremony-tip">Prepare a ordem dos cards antes da reuniao.</div></aside>
+    <div className="ceremony-model-grid review-grid">
+      <aside className="ceremony-config-panel review-config-panel">
+        <button className="secondary-button" type="button" onClick={() => setMode("list")}><ChevronLeft size={16} />Voltar ao histórico</button>
+        <h3>{record ? "Review salva" : "Configurar Review"}</h3>
+        {record ? (
+          <div className="planning-sprint-preview"><strong>{record.delivered.length}</strong><span>{reviewLabel(record)}</span></div>
+        ) : (
+          <>
+            <ReviewConfigFields hideProject onChange={(value) => { setConfig(value); setError(""); }} projects={[project]} sprints={sprints} value={{ ...config, projectId: project.id }} />
+            {error && <p className="review-error" role="alert">{error}</p>}
+            <button className="primary-button" type="button" onClick={generate}>Gerar apresentação <Play size={15} /></button>
+          </>
+        )}
+        {record && <button className="danger-secondary-button" type="button" onClick={() => remove(record.id)}>Excluir review</button>}
+        <div className="ceremony-help-card"><strong>Sobre a Review</strong><p>{isSprintProject ? "Usa os cards do projeto vinculados à sprint escolhida." : "Usa os cards do projeto concluídos entre as datas escolhidas."}</p></div>
+      </aside>
+      <section className="ceremony-presentation">
+        {record ? (
+          <ReviewPresentation record={record} />
+        ) : (
+          <div className="planning-generate-placeholder">
+            <CheckCircle2 size={48} />
+            <h2>{isSprintProject ? "Escolha a sprint e gere a apresentação" : "Escolha o período e gere a apresentação"}</h2>
+            <p>As entregas aparecem aqui depois de pressionar Gerar apresentação, e ficam salvas no histórico.</p>
+          </div>
+        )}
+      </section>
       <CeremonySteps />
     </div>
   );
@@ -2574,7 +3065,18 @@ function DailyMemberSlide({ member, cards }: { member: string; cards: BoardCard[
   );
 }
 
-function RetroCeremony({ retrospectives, onRetrospectivesChange }: { retrospectives: Retrospective[]; onRetrospectivesChange: (retrospectives: Retrospective[]) => void }) {
+function RetroCeremony({
+  project,
+  projectOf,
+  retrospectives: allRetrospectives,
+  onRetrospectivesChange
+}: {
+  project: ReviewProject;
+  projectOf: (productId?: string) => string;
+  retrospectives: Retrospective[];
+  onRetrospectivesChange: (retrospectives: Retrospective[]) => void;
+}) {
+  const retrospectives = allRetrospectives.filter((item) => projectOf(item.projectId) === project.id);
   const [screenMode, setScreenMode] = useState<"list" | "create" | "detail">("list");
   const [selectedRetroId, setSelectedRetroId] = useState("");
   const [retroTitle, setRetroTitle] = useState(`Retro ${retrospectives.length + 1}`);
@@ -2586,6 +3088,7 @@ function RetroCeremony({ retrospectives, onRetrospectivesChange }: { retrospecti
   function createRetro() {
     const retroItem: Retrospective = {
       id: `retro-${Date.now()}`,
+      projectId: project.id,
       title: retroTitle.trim() || `Retro ${retrospectives.length + 1}`,
       isOpen: true,
       columns: [
@@ -2594,14 +3097,14 @@ function RetroCeremony({ retrospectives, onRetrospectivesChange }: { retrospecti
         { id: `retro-actions-${Date.now()}`, title: "Acoes", color: "blue", cards: [] }
       ]
     };
-    onRetrospectivesChange([...retrospectives, retroItem]);
+    onRetrospectivesChange([...allRetrospectives, retroItem]);
     setSelectedRetroId(retroItem.id);
     setScreenMode("detail");
     setRetroTitle(`Retro ${retrospectives.length + 2}`);
   }
 
   function updateRetro(nextRetro: Retrospective) {
-    onRetrospectivesChange(retrospectives.map((item) => item.id === nextRetro.id ? nextRetro : item));
+    onRetrospectivesChange(allRetrospectives.map((item) => item.id === nextRetro.id ? nextRetro : item));
   }
 
   function deleteRetroColumn(columnId: string) {
@@ -2617,7 +3120,7 @@ function RetroCeremony({ retrospectives, onRetrospectivesChange }: { retrospecti
       return;
     }
 
-    onRetrospectivesChange(retrospectives.filter((item) => item.id !== retroId));
+    onRetrospectivesChange(allRetrospectives.filter((item) => item.id !== retroId));
     if (selectedRetroId === retroId) {
       setSelectedRetroId("");
       setScreenMode("list");
@@ -5643,6 +6146,12 @@ function getBoardExportFieldValue(card: BoardCard, fieldId: BoardExportFieldId) 
 }
 
 function getMovedCard(card: BoardCard, columns: BoardColumn[], sourceColumnIndex: number, targetColumnIndex: number): BoardCard {
+  const movedCard = getMovedCardBase(card, columns, sourceColumnIndex, targetColumnIndex);
+  // Guarda o dia em que o card foi concluído para a Review por período (Kanban) e por sprint.
+  return movedCard.done ? { ...movedCard, doneAt: card.done && card.doneAt ? card.doneAt : todayIso() } : { ...movedCard, doneAt: undefined };
+}
+
+function getMovedCardBase(card: BoardCard, columns: BoardColumn[], sourceColumnIndex: number, targetColumnIndex: number): BoardCard {
   if (targetColumnIndex === sourceColumnIndex) {
     return { ...card, done: columns[targetColumnIndex].title === "Aprovado" };
   }

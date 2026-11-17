@@ -50,6 +50,8 @@ export interface Meeting {
   /** Tópicos pendentes no momento em que a reunião começou. */
   topicIds: string[];
   results: MeetingTopicResult[];
+  /** Entregas (reviews) geradas durante a reunião pelo botão "Entregas". */
+  reviewIds?: string[];
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;

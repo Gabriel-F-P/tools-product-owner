@@ -1,11 +1,26 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, CheckSquare, Clock, Square } from "lucide-react";
+import { ArrowLeft, CheckSquare, Clock, NotebookPen, Rocket, Square, Trash2 } from "lucide-react";
 import { RichEditor } from "./RichEditor";
-import { ConfirmModal } from "./ui";
+import { ConfirmModal, Modal } from "./ui";
+import { ReviewConfigFields, ReviewPresentation, defaultReviewConfig, reviewLabel, validateReviewConfig } from "../ceremonies/review";
+import type { ReviewConfig, ReviewProject, ReviewRecord, ReviewSprint } from "../ceremonies/review";
 import { agendaLines, defaultMeetingTitle, formatDate, formatDateTime } from "./types";
 import type { MemberLite, Meeting, MeetingTopicResult, Topic, TopicPresent } from "./types";
 
 type SidePanel = "topics" | "people";
+type MainPanel = "notes" | "deliveries";
+
+/** Dados para o botão "Entregas": gera a review (entrega) de um projeto dentro da reunião. */
+export interface MeetingDeliveries {
+  /** Só os projetos do usuário logado. */
+  projects: ReviewProject[];
+  sprints: ReviewSprint[];
+  reviews: ReviewRecord[];
+  activeSprintId?: string;
+  defaultProjectId: string;
+  onGenerate: (config: ReviewConfig, meeting: Meeting) => ReviewRecord | null;
+  onDelete: (reviewId: string) => void;
+}
 
 /**
  * Tela da reunião em andamento: editor de texto rico + painel de tópicos pendentes.
@@ -17,8 +32,10 @@ export function MeetingRoom({
   members,
   onMeetingChange,
   onTopicsChange,
-  onExit
+  onExit,
+  deliveries
 }: {
+  deliveries?: MeetingDeliveries;
   meeting: Meeting;
   topics: Topic[];
   members: MemberLite[];
@@ -29,6 +46,36 @@ export function MeetingRoom({
   const [panel, setPanel] = useState<SidePanel>("topics");
   const [answering, setAnswering] = useState<string | null>(null);
   const [isConfirmingFinish, setIsConfirmingFinish] = useState(false);
+  const [mainPanel, setMainPanel] = useState<MainPanel>("notes");
+  const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
+  const meetingReviews = (meeting.reviewIds ?? [])
+    .map((id) => deliveries?.reviews.find((record) => record.id === id))
+    .filter((record): record is ReviewRecord => Boolean(record));
+  const [openReviewId, setOpenReviewId] = useState("");
+  const openReview = meetingReviews.find((record) => record.id === openReviewId) ?? meetingReviews[0];
+
+  function generateDelivery(config: ReviewConfig) {
+    const record = deliveries?.onGenerate(config, meeting);
+    if (!record) {
+      return "Não foi possível gerar a entrega com essas opções.";
+    }
+
+    onMeetingChange({ ...meeting, reviewIds: [...(meeting.reviewIds ?? []), record.id] });
+    setOpenReviewId(record.id);
+    setMainPanel("deliveries");
+    setIsDeliveryOpen(false);
+    return "";
+  }
+
+  function removeDelivery(recordId: string) {
+    if (!window.confirm("Remover esta entrega da reunião?")) {
+      return;
+    }
+
+    onMeetingChange({ ...meeting, reviewIds: (meeting.reviewIds ?? []).filter((id) => id !== recordId) });
+    deliveries?.onDelete(recordId);
+    setOpenReviewId("");
+  }
 
   const agenda = useMemo(
     () => meeting.topicIds.map((id) => topics.find((topic) => topic.id === id)).filter((topic): topic is Topic => Boolean(topic)),
@@ -132,13 +179,20 @@ export function MeetingRoom({
           />
           <span>{formatDate(meeting.date)} · {participants.length} participante{participants.length === 1 ? "" : "s"}</span>
         </div>
-        <button
-          className="mt-btn primary"
-          onClick={() => (unanswered.length > 0 ? setIsConfirmingFinish(true) : finish(false))}
-          type="button"
-        >
-          Finalizar Reunião
-        </button>
+        <div className="mt-header-actions">
+          {deliveries && (
+            <button className="mt-btn" onClick={() => setIsDeliveryOpen(true)} type="button">
+              <Rocket size={16} /> Entregas
+            </button>
+          )}
+          <button
+            className="mt-btn primary"
+            onClick={() => (unanswered.length > 0 ? setIsConfirmingFinish(true) : finish(false))}
+            type="button"
+          >
+            Finalizar Reunião
+          </button>
+        </div>
       </header>
 
       {agendaItems.length > 0 && (
@@ -155,11 +209,49 @@ export function MeetingRoom({
 
       <div className="mt-room-body">
         <section className="mt-room-editor" aria-label="Anotações da reunião">
-          <RichEditor
-            onChange={(content) => onMeetingChange({ ...meeting, content })}
-            placeholder="Registre aqui o que foi discutido, decisões, checklists, prints..."
-            value={meeting.content}
-          />
+          {deliveries && (
+            <div className="mt-tabs mt-main-tabs" role="tablist">
+              <button aria-selected={mainPanel === "notes"} className={mainPanel === "notes" ? "active" : ""} onClick={() => setMainPanel("notes")} role="tab" type="button">
+                <NotebookPen size={15} /> Anotações
+              </button>
+              <button aria-selected={mainPanel === "deliveries"} className={mainPanel === "deliveries" ? "active" : ""} onClick={() => setMainPanel("deliveries")} role="tab" type="button">
+                <Rocket size={15} /> Entregas <span className="mt-count">{meetingReviews.length}</span>
+              </button>
+            </div>
+          )}
+          {mainPanel === "notes" || !deliveries ? (
+            <RichEditor
+              onChange={(content) => onMeetingChange({ ...meeting, content })}
+              placeholder="Registre aqui o que foi discutido, decisões, checklists, prints..."
+              value={meeting.content}
+            />
+          ) : (
+            <div className="mt-deliveries">
+              {meetingReviews.length === 0 ? (
+                <div className="mt-deliveries-empty">
+                  <Rocket size={36} />
+                  <p>Nenhuma entrega apresentada nesta reunião ainda.</p>
+                  <button className="mt-btn primary" onClick={() => setIsDeliveryOpen(true)} type="button">
+                    <Rocket size={16} /> Gerar entrega
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-delivery-chips">
+                    {meetingReviews.map((record) => (
+                      <span className={`mt-delivery-chip ${record.id === openReview?.id ? "active" : ""}`} key={record.id}>
+                        <button onClick={() => setOpenReviewId(record.id)} type="button">{reviewLabel(record)}</button>
+                        <button aria-label={`Remover ${reviewLabel(record)}`} className="remove" onClick={() => removeDelivery(record.id)} title="Remover da reunião" type="button">
+                          <Trash2 size={13} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  {openReview && <ReviewPresentation compact record={openReview} />}
+                </>
+              )}
+            </div>
+          )}
         </section>
 
         <aside className="mt-room-side">
@@ -201,6 +293,10 @@ export function MeetingRoom({
           )}
         </aside>
       </div>
+
+      {isDeliveryOpen && deliveries && (
+        <DeliveryModal deliveries={deliveries} onClose={() => setIsDeliveryOpen(false)} onGenerate={generateDelivery} />
+      )}
 
       {isConfirmingFinish && (
         <ConfirmModal
@@ -323,5 +419,53 @@ function TopicAnswerItem({
         </small>
       )}
     </article>
+  );
+}
+
+/** Modal do botão "Entregas": projeto + sprint (projetos Sprint) ou período (projetos Kanban). */
+function DeliveryModal({
+  deliveries,
+  onClose,
+  onGenerate
+}: {
+  deliveries: MeetingDeliveries;
+  onClose: () => void;
+  onGenerate: (config: ReviewConfig) => string;
+}) {
+  const [config, setConfig] = useState<ReviewConfig>(() =>
+    defaultReviewConfig(deliveries.projects, deliveries.sprints, deliveries.defaultProjectId, deliveries.activeSprintId)
+  );
+  const [error, setError] = useState("");
+
+  function submit() {
+    const message = validateReviewConfig(config, deliveries.projects) || onGenerate(config);
+    setError(message);
+  }
+
+  return (
+    <Modal
+      footer={
+        <>
+          <button className="mt-btn ghost" onClick={onClose} type="button">Cancelar</button>
+          <button className="mt-btn primary" disabled={deliveries.projects.length === 0} onClick={submit} type="button">
+            <Rocket size={16} /> Gerar entrega
+          </button>
+        </>
+      }
+      onClose={onClose}
+      title="Entregas"
+    >
+      <div className="mt-form">
+        {deliveries.projects.length === 0 ? (
+          <p className="mt-empty">Você não participa de nenhum projeto.</p>
+        ) : (
+          <ReviewConfigFields onChange={(value) => { setConfig(value); setError(""); }} projects={deliveries.projects} sprints={deliveries.sprints} value={config} />
+        )}
+        <p className="mt-hint">
+          A entrega aparece na aba “Entregas” desta reunião, fica no histórico dela e também na Review das Cerimônias do projeto.
+        </p>
+        {error && <p className="mt-error" role="alert">{error}</p>}
+      </div>
+    </Modal>
   );
 }

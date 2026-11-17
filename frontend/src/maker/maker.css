@@ -1,0 +1,516 @@
+/* ===== Maker (usa as variáveis do tema .mt das Reuniões) ===== */
+.maker {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.maker > .mt-panel {
+  max-width: 1530px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.maker-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 20px;
+}
+
+.maker-title small {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.maker-subtitle {
+  margin: 10px 0 0;
+  font-size: 16px;
+}
+
+.maker-empty {
+  padding: 32px 16px;
+  border: 1px dashed var(--mt-line);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.maker input[type="number"],
+.maker-modal input[type="number"],
+.maker-modal input[type="tel"],
+.maker-modal input[type="email"] {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--mt-line);
+  border-radius: 8px;
+  background: var(--mt-surface);
+  color: var(--mt-text);
+  font: inherit;
+  font-weight: 500;
+  width: 100%;
+}
+
+.maker input[readonly] {
+  background: var(--mt-soft);
+  color: var(--mt-muted);
+}
+
+.maker a.mt-btn {
+  text-decoration: none;
+}
+
+.maker label.mt-btn {
+  cursor: pointer;
+}
+
+.maker-danger {
+  color: var(--mt-danger) !important;
+}
+
+/* ---------- cards ---------- */
+.maker-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 14px;
+}
+
+.maker-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--mt-line);
+  border-radius: 10px;
+  background: var(--mt-soft);
+}
+
+.maker-card-body {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.maker-card-body h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+
+.maker-card-body p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.maker-small {
+  font-size: 13px !important;
+}
+
+.maker-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 14px;
+}
+
+.maker-card-actions .mt-btn {
+  flex: 1;
+}
+
+.maker-price {
+  margin-top: 4px !important;
+  color: var(--mt-brand-text);
+  font-size: 19px !important;
+  font-weight: 800;
+}
+
+.maker-price span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.maker-tag {
+  justify-self: start;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(143, 255, 0, 0.16);
+  color: var(--mt-brand-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.maker-thumb {
+  display: grid;
+  height: 170px;
+  place-items: center;
+  background: var(--mt-line) center / cover no-repeat;
+  color: var(--mt-muted);
+}
+
+/* ---------- formulários ---------- */
+.maker-row {
+  display: flex;
+  gap: 12px;
+}
+
+.maker-row > .mt-field {
+  flex: 1;
+}
+
+.maker-row > .mt-field.small {
+  flex: 0 0 130px;
+}
+
+.maker-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.maker-grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.maker-qty {
+  width: 80px !important;
+  flex: 0 0 80px;
+}
+
+.maker-photo-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.maker-photo {
+  display: grid;
+  width: 104px;
+  height: 104px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--mt-soft) center / cover no-repeat;
+  color: var(--mt-muted);
+}
+
+.maker-file-name {
+  flex: 1;
+  min-width: 140px;
+  color: var(--mt-muted);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.maker-lines {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.maker-line {
+  display: grid;
+  grid-template-columns: 1fr 130px 100px 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--mt-line);
+  border-radius: 10px;
+  color: var(--mt-text);
+  font-weight: 500;
+}
+
+.maker-line-info {
+  display: grid;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.maker-line-info small {
+  color: var(--mt-muted);
+  font-size: 12px;
+}
+
+.maker-line-qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mt-muted);
+  font-size: 13px;
+}
+
+.maker-line-qty input {
+  min-height: 34px !important;
+  padding: 0 8px !important;
+}
+
+.maker-line-cost {
+  text-align: right;
+  font-size: 14px;
+}
+
+.maker-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(143, 255, 0, 0.12);
+  color: var(--mt-brand-text);
+}
+
+.maker-total strong {
+  font-size: 20px;
+}
+
+.maker-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---------- pedidos ---------- */
+.maker-tabs {
+  flex-wrap: wrap;
+}
+
+.maker-orders {
+  display: grid;
+  gap: 10px;
+}
+
+.maker-order {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--mt-line);
+  border-left: 5px solid;
+  border-radius: 10px;
+  background: var(--mt-soft);
+}
+
+.maker-order.late {
+  background: color-mix(in srgb, var(--mt-danger) 8%, var(--mt-soft));
+}
+
+.maker-order-pos {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--mt-surface);
+  font-weight: 800;
+}
+
+.maker-order-main {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.maker-order-main p {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.maker-order-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.maker-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.maker-chip {
+  padding: 2px 9px;
+  border: 1px solid var(--mt-line);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.maker-chip.due {
+  border-color: transparent;
+  background: var(--mt-surface);
+  color: var(--mt-muted);
+}
+
+.maker-chip.due.today {
+  background: rgba(245, 158, 11, 0.18);
+  color: var(--mt-warn, #b45309);
+}
+
+.maker-chip.due.late {
+  background: color-mix(in srgb, var(--mt-danger) 18%, transparent);
+  color: var(--mt-danger);
+}
+
+.maker-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.maker-stat {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--mt-line);
+  border-radius: 10px;
+  background: var(--mt-soft);
+}
+
+.maker-stat span {
+  color: var(--mt-muted);
+  font-size: 13px;
+}
+
+.maker-stat strong {
+  font-size: 24px;
+}
+
+.maker-stat.alert strong {
+  color: var(--mt-danger);
+}
+
+.maker-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--mt-line);
+  border-radius: 10px;
+}
+
+.maker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.maker-table th,
+.maker-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--mt-line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.maker-table th {
+  background: var(--mt-soft);
+  color: var(--mt-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.maker-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.maker-table .num {
+  text-align: right;
+}
+
+.maker-table .wrap {
+  min-width: 200px;
+  white-space: normal;
+}
+
+.maker-table .bar-col {
+  width: 28%;
+  min-width: 120px;
+}
+
+.maker-table tr.late td:first-child {
+  color: var(--mt-danger);
+  font-weight: 700;
+}
+
+.maker-table tr.today td:first-child {
+  color: var(--mt-warn, #b45309);
+  font-weight: 700;
+}
+
+.maker-table tr.total td {
+  background: var(--mt-soft);
+  font-weight: 800;
+}
+
+.maker-bar {
+  display: block;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--mt-soft);
+}
+
+.maker-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6fd400, #8fff00);
+}
+
+@media (max-width: 760px) {
+  .maker-row {
+    flex-direction: column;
+  }
+
+  .maker-row > .mt-field.small {
+    flex: 1;
+  }
+
+  .maker-line {
+    grid-template-columns: 1fr 34px;
+  }
+
+  .maker-line-qty {
+    grid-column: 1;
+  }
+
+  .maker-line-cost {
+    grid-column: 2;
+    grid-row: 2;
+    white-space: nowrap;
+  }
+
+  .maker-order {
+    grid-template-columns: auto 1fr;
+  }
+
+  .maker-order-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .maker-order-actions .mt-btn {
+    flex: 1;
+  }
+
+  .maker-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.maker > .topbar {
+  width: 100%;
+}

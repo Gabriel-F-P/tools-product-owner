@@ -4,6 +4,7 @@ import express from "express";
 import { backlogRouter } from "./routes/backlog.routes.js";
 import { dashboardRouter } from "./routes/dashboard.routes.js";
 import { integrationsRouter } from "./routes/integrations.routes.js";
+import { makerFilesRouter } from "./routes/maker-files.routes.js";
 import { workspaceStateRouter } from "./routes/workspace-state.routes.js";
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/dashboard", dashboardRouter);
 app.use("/api/backlog", backlogRouter);
 app.use("/api/integrations", integrationsRouter);
 app.use("/api/workspace-state", workspaceStateRouter);
+app.use("/api/maker-files", makerFilesRouter);
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : "Unexpected error";
