@@ -58,6 +58,7 @@ import type { DashboardData, Metric, Status } from "./types/dashboard";
 import type { BacklogEntry, BacklogEpic, BacklogItem, BacklogPriority } from "./types/backlog";
 import { applyCreatedIssueLink, archiveIssue, createEpic, createIssue, toCreateEpicPayload, updateIssue } from "./services/backlog";
 import type { UpdateIssueResult } from "./services/backlog";
+import { RadialMenu } from "./RadialMenu";
 import { apiUrl } from "./services/api";
 import { getDashboard } from "./services/dashboard";
 import { mockDashboard } from "./services/mockDashboard";
@@ -843,6 +844,14 @@ export function App() {
     return Boolean(storedSession && localUsers.some((user) => user.email === storedSession));
   });
   const [page, setPage] = useState<Page>("board");
+  const [isPageLoading, setIsPageLoading] = useState(false);
+
+  // Ao trocar de página, mostra a logo girando por um instante.
+  useEffect(() => {
+    setIsPageLoading(true);
+    const timer = window.setTimeout(() => setIsPageLoading(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [page]);
   const [products, setProducts] = useState<ProductAccess[]>(() => defaultProducts.map((product) => ({ ...product, members: product.members.map((member) => ({ ...member })) })));
   const [activeProductId, setActiveProductId] = useState(defaultProducts[0]?.id ?? "");
   const [boardConfig, setBoardConfig] = useState<BoardColumn[]>(() => hydrateBoardColumns(boardColumns).map((column) => ({ ...column, cards: [] })));
@@ -1195,7 +1204,14 @@ export function App() {
   return (
     <SessionContext.Provider value={sessionValue}>
     <div className="app-shell">
-      <Sidebar activePage={page} onNavigate={handleNavigate} productName={activeProduct.name} permission={currentPermission} />
+      {/* Menu lateral desativado por enquanto: a navegação é pelo menu radial. */}
+      <RadialMenu activePage={page} entries={menuItems} onNavigate={handleNavigate} />
+      {isPageLoading && (
+        <div aria-live="polite" className="page-loader" role="status">
+          <tna-logo animate="loop" variant="symbol" style={{ width: 84 }} />
+          <span>Carregando…</span>
+        </div>
+      )}
       {page === "backlog" && (
         <BacklogPage
           boardColumns={boardConfig}
@@ -1408,8 +1424,7 @@ function LoginPage({ onLogin }: { onLogin: (email: string) => void }) {
     <main className="login-screen">
       <section className="login-panel">
         <div className="login-brand">
-          <span className="brand-mark" />
-          <strong>Toolz.me</strong>
+          <tna-logo intro style={{ width: 190 }} />
         </div>
         <h1>{mode === "login" ? "Entrar na plataforma" : "Recuperar senha"}</h1>
         <p>{mode === "login" ? "Acesse seus projetos, boards, sprints e cerimonias." : "Informe seu e-mail para receber as instrucoes de redefinicao."}</p>
@@ -1960,12 +1975,12 @@ function Sidebar({ activePage, onNavigate, permission, productName }: { activePa
     }
   });
 
-  // O grupo da página atual fica sempre aberto.
+  // Ao trocar de página, abre o grupo dela; o usuário ainda pode recolher depois.
   useEffect(() => {
-    if (activeGroupId && !openGroups.includes(activeGroupId)) {
-      setOpenGroups((current) => [...current, activeGroupId]);
+    if (activeGroupId) {
+      setOpenGroups((current) => (current.includes(activeGroupId) ? current : [...current, activeGroupId]));
     }
-  }, [activeGroupId, openGroups]);
+  }, [activeGroupId, activePage]);
 
   useEffect(() => {
     try {
@@ -1989,12 +2004,15 @@ function Sidebar({ activePage, onNavigate, permission, productName }: { activePa
   return (
     <aside className={`sidebar ${isCollapsed ? "collapsed" : ""}`} aria-label="Menu lateral">
       <div className="sidebar-header">
-        <a className="brand" href="/" aria-label="Toolz.me" onClick={(event) => event.preventDefault()}>
-          <span className="brand-mark" />
-          <span className="brand-copy">
-            Toolz.me
-            <small>{productName} - {permission}</small>
-          </span>
+        <a className="brand" href="/" aria-label="TNA Inovações" onClick={(event) => event.preventDefault()}>
+          {isCollapsed ? (
+            <tna-logo variant="symbol" style={{ width: 40 }} />
+          ) : (
+            <span className="brand-copy">
+              <tna-logo style={{ width: 150 }} />
+              <small>{productName} - {permission}</small>
+            </span>
+          )}
         </a>
         <button
           aria-label={isCollapsed ? "Expandir menu lateral" : "Recuar menu lateral"}

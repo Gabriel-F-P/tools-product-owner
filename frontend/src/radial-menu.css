@@ -1,0 +1,200 @@
+.radial-menu {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  height: 0;
+  pointer-events: none;
+}
+
+.radial-backdrop {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  cursor: default;
+  animation: radial-fade 0.18s ease;
+}
+
+.radial-svg {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  width: min(540px, 100vw);
+  height: auto;
+  transform: translateX(-50%);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.radial-sector {
+  cursor: pointer;
+  outline: none;
+  pointer-events: auto;
+}
+
+.radial-sector path {
+  fill: #2b2b2b;
+  stroke: #151515;
+  stroke-width: 1;
+  transition: fill 0.15s ease;
+}
+
+.radial-ring-outer .radial-sector path {
+  fill: #232323;
+}
+
+.radial-sector:hover path,
+.radial-sector:focus-visible path {
+  fill: #3d3d3d;
+}
+
+.radial-sector.active path {
+  fill: #35570a;
+  stroke: #8fff00;
+}
+
+.radial-ring-inner {
+  animation: radial-pop 0.22s ease both;
+  transform-origin: 270px 262px;
+}
+
+.radial-ring-outer {
+  animation: radial-pop 0.24s ease both;
+  transform-origin: 270px 262px;
+}
+
+.radial-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  color: #f1f1f1;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+}
+
+.radial-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #8fff00;
+  color: #151515;
+}
+
+.radial-ring-outer .radial-icon {
+  background: #3a3a3a;
+  color: #8fff00;
+}
+
+.radial-sector.active .radial-text {
+  color: #8fff00;
+}
+
+.radial-toggle {
+  position: fixed;
+  bottom: -26px;
+  left: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: start center;
+  width: 78px;
+  height: 78px;
+  padding-top: 10px;
+  border: 1px solid #303030;
+  border-radius: 50%;
+  background: #8fff00;
+  color: #151515;
+  box-shadow: 0 -6px 26px rgba(143, 255, 0, 0.3);
+  transform: translateX(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.15s ease;
+}
+
+.radial-toggle:hover {
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.radial-menu.open .radial-toggle {
+  background: #1d1d1d;
+  color: #8fff00;
+  border-color: #8fff00;
+}
+
+@keyframes radial-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes radial-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .radial-label {
+    font-size: 10px;
+  }
+}
+
+.page-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(17, 18, 20, 0.72);
+  backdrop-filter: blur(4px);
+  color: #ecece8;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  --tna-ink: #f4f4f2;
+  animation: radial-fade 0.15s ease;
+}
+
+.brand tna-logo {
+  --tna-ink: #111214;
+}
+
+:root[data-theme="dark"] .brand tna-logo,
+:root[data-theme="dark"] .login-brand tna-logo {
+  --tna-ink: #f4f4f2;
+}
+
+.login-brand tna-logo {
+  --tna-ink: #111214;
+}
+
+/* Botão do menu: logo da TNA sobre fundo escuro */
+.radial-toggle,
+.radial-menu.open .radial-toggle {
+  background: #111214;
+  border: 1px solid #8fff00;
+  color: #f4f4f2;
+  --tna-ink: #f4f4f2;
+}
+
+.radial-toggle tna-logo {
+  display: block;
+  margin-top: 2px;
+}
