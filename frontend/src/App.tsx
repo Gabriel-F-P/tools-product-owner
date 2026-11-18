@@ -3861,7 +3861,7 @@ function BacklogPage({
                     <span className={`matrix-method-tag ${mobileProject.method ?? "sprint"}`}>{projectMethodLabel[mobileProject.method ?? "sprint"]}</span>
                   </div>
 
-                  <div className="mobile-tabs" ref={(element) => scrollActiveTab(element)} role="tablist" aria-label="Abas do backlog">
+                  <div className="mobile-tabs" ref={(element) => scrollActiveTab(element, `${mobileProject.id}:${mobileColumnIndex}`)} role="tablist" aria-label="Abas do backlog">
                     {visibleBacklogColumns.map((column, index) => (
                       <button
                         aria-selected={index === mobileColumnIndex}
@@ -6003,7 +6003,7 @@ function BoardPage({
               )}
             </div>
 
-            <div className="mobile-tabs" ref={(element) => scrollActiveTab(element)} role="tablist" aria-label="Abas do board">
+            <div className="mobile-tabs" ref={(element) => scrollActiveTab(element, `${mobileProject.id}:${mobileColumnIndex}`)} role="tablist" aria-label="Abas do board">
               {filteredColumns.map((column, index) => (
                 <button
                   aria-selected={index === mobileColumnIndex}
@@ -8034,13 +8034,22 @@ function Topbar({
   );
 }
 
-/** Arrastar o dedo para o lado troca de aba (celular). */
+/** Faixas que rolam para o lado sozinhas: arrastar nelas só rola a faixa, sem trocar de aba. */
+const swipeIgnoredAreas = ".mobile-tabs, .mobile-projects";
+
+/** Arrastar o dedo para o lado na área dos cards troca de aba (celular). */
 function swipeHandlers(go: (step: number) => void) {
   let originX = 0;
   let originY = 0;
+  let ignore = false;
   return {
-    onTouchStart: (event: React.TouchEvent) => { originX = event.touches[0].clientX; originY = event.touches[0].clientY; },
+    onTouchStart: (event: React.TouchEvent) => {
+      originX = event.touches[0].clientX;
+      originY = event.touches[0].clientY;
+      ignore = Boolean((event.target as HTMLElement).closest?.(swipeIgnoredAreas));
+    },
     onTouchEnd: (event: React.TouchEvent) => {
+      if (ignore) return;
       const dx = event.changedTouches[0].clientX - originX;
       const dy = event.changedTouches[0].clientY - originY;
       if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
@@ -8049,10 +8058,14 @@ function swipeHandlers(go: (step: number) => void) {
   };
 }
 
-/** Mantém a aba ativa visível na faixa de abas. */
-function scrollActiveTab(element: HTMLElement | null) {
+/**
+ * Mantém a aba ativa visível na faixa de abas, só quando a aba ativa muda.
+ * Assim a faixa pode ser rolada livremente para escolher outra aba sem voltar sozinha.
+ */
+function scrollActiveTab(element: HTMLElement | null, activeKey: string) {
   const active = element?.querySelector<HTMLElement>(".mobile-tab.active");
-  if (element && active) {
+  if (element && active && element.dataset.activeTab !== activeKey) {
+    element.dataset.activeTab = activeKey;
     const offset = active.getBoundingClientRect().left - element.getBoundingClientRect().left + element.scrollLeft;
     element.scrollTo({ left: Math.max(0, offset - 12) });
   }
