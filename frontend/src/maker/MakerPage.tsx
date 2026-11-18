@@ -3,10 +3,14 @@ import type { Dispatch, ReactNode, SetStateAction } from "react";
 import {
   Box,
   Camera,
+  ArrowRight,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Columns3,
   Download,
   FolderOpen,
+  List,
   Mail,
   MapPin,
   Paperclip,
@@ -18,6 +22,8 @@ import {
   X
 } from "lucide-react";
 import { makerSampleData } from "./sample";
+import { itemStatus, moveUnits, movePart, normalizeOrder, orderParts, printJobs, stageIndex } from "./orders";
+import type { OrderPart } from "./orders";
 import { deleteMakerFile, formatBytes, makerFileUrl, resizeImage, storeMakerFile } from "./files";
 import {
   brl,
@@ -474,6 +480,7 @@ function ModelModal({ data, model, onChange, onClose, onSaved }: { data: MakerDa
   const [title, setTitle] = useState(model?.title ?? "");
   const [grams, setGrams] = useState(model?.grams != null ? String(model.grams) : "");
   const [hours, setHours] = useState(model?.hours != null ? String(model.hours) : "");
+  const [perPrint, setPerPrint] = useState(model?.perPrint ? String(model.perPrint) : "1");
   const [photo, setPhoto] = useState<MakerFileRef | undefined>(model?.photo);
   const [file, setFile] = useState<MakerFileRef | undefined>(model?.file);
   const [items, setItems] = useState<Array<{ materialId: string; quantity: string }>>(
@@ -530,6 +537,7 @@ function ModelModal({ data, model, onChange, onClose, onSaved }: { data: MakerDa
       title: title.trim(),
       grams: toNumber(grams),
       hours: hoursValue,
+      perPrint: Math.max(1, Math.floor(toNumber(perPrint) ?? 1)),
       photo,
       file,
       materials: items.map<MakerModelMaterial>((item) => ({
@@ -571,6 +579,12 @@ function ModelModal({ data, model, onChange, onClose, onSaved }: { data: MakerDa
             </div>
           </div>
         </div>
+
+        <label className="mt-field">
+          Quantidade por impressão
+          <input inputMode="numeric" min="1" onChange={(event) => setPerPrint(event.target.value)} placeholder="1" step="1" type="number" value={perPrint} />
+          <small className="mt-hint">Quantas unidades deste modelo saem de uma vez em cada impressão.</small>
+        </label>
 
         <div className="maker-row">
           <label className="mt-field">Gramatura (g)<input inputMode="decimal" min="0" onChange={(event) => setGrams(event.target.value)} placeholder="0" step="any" type="number" value={grams} /></label>
@@ -654,6 +668,16 @@ function dueBadge(dueDate: string) {
 
 const statusOf = (status: MakerOrderStatus) => orderStatuses.find((item) => item.id === status) ?? orderStatuses[0];
 
+type OrderCard = {
+  key: string;
+  order: MakerOrder;
+  /** Etapa do pedaço exibido (na Esteira, a etapa mais atrasada do pedido). */
+  status: MakerOrderStatus;
+  items: MakerOrderItem[];
+  split: boolean;
+  line: boolean;
+};
+
 function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }) {
   const [tab, setTab] = useState<OrderTab>("line");
   const [view, setView] = useState<"tabs" | "board">(() => {
@@ -663,10 +687,13 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
       return "tabs";
     }
   });
-  const [dragId, setDragId] = useState<string | null>(null);
+  const [drag, setDrag] = useState<{ orderId: string; from: MakerOrderStatus } | null>(null);
   const [dragOver, setDragOver] = useState<MakerOrderStatus | null>(null);
+  const [expandedJobs, setExpandedJobs] = useState<string[]>([]);
   const [editing, setEditing] = useState<MakerOrder | "new" | null>(null);
   const isEmpty = !data.clients.length && !data.materials.length && !data.models.length && !data.orders.length;
+  const clientName = (id: string) => data.clients.find((client) => client.id === id)?.name ?? "Cliente excluído";
+  const today = localIso();
 
   function changeView(next: "tabs" | "board") {
     setView(next);
@@ -676,17 +703,32 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
       // sem persistência: segue funcionando na sessão
     }
   }
-  const clientName = (id: string) => data.clients.find((client) => client.id === id)?.name ?? "Cliente excluído";
-  const open = data.orders.filter((order) => order.status !== "delivered").sort(productionOrder);
-  const delivered = data.orders.filter((order) => order.status === "delivered").sort((a, b) => productionOrder(b, a));
-  const list = tab === "line" ? open : tab === "delivered" ? delivered : open.filter((order) => order.status === tab);
-  const today = localIso();
 
-  function move(order: MakerOrder, status: MakerOrderStatus) {
-    onChange((current) => ({
-      ...current,
-      orders: current.orders.map((item) => (item.id === order.id ? { ...item, status, deliveredAt: status === "delivered" ? new Date().toISOString() : null } : item))
-    }));
+  const open = data.orders.filter((order) => order.status !== "delivered").sort(productionOrder);
+  const delivered = data.orders.filter((order) => order.status === "delivered");
+
+  /** Um card por pedaço do pedido em cada etapa: o mesmo pedido pode aparecer em etapas diferentes. */
+  const partCards = (status: MakerOrderStatus): OrderCard[] =>
+    data.orders
+      .flatMap((order) => {
+        const parts = orderParts(order);
+        return parts.filter((part: OrderPart) => part.status === status).map((part: OrderPart) => ({ key: `${order.id}:${status}`, order, status, items: part.items, split: parts.length > 1, line: false }));
+      })
+      .sort((a, b) => (status === "delivered" ? productionOrder(b.order, a.order) : productionOrder(a.order, b.order)));
+
+  const lineCards: OrderCard[] = open.map((order) => {
+    const parts = orderParts(order);
+    return { key: order.id, order, status: order.status, items: parts.filter((part: OrderPart) => part.status !== "delivered").flatMap((part: OrderPart) => part.items), split: parts.length > 1, line: true };
+  });
+  const cardsFor = (id: OrderTab) => (id === "line" ? lineCards : partCards(id));
+  const list = cardsFor(tab);
+
+  function updateOrder(orderId: string, change: (order: MakerOrder) => MakerOrder) {
+    onChange((current) => ({ ...current, orders: current.orders.map((order) => (order.id === orderId ? change(order) : order)) }));
+  }
+
+  function move(card: Pick<OrderCard, "order" | "status">, to: MakerOrderStatus) {
+    updateOrder(card.order.id, (order) => movePart(order, card.status, to));
   }
 
   function remove(order: MakerOrder) {
@@ -695,57 +737,71 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
     }
   }
 
-  // ----- Resumo (só o que falta entregar) -----
-  const totals = open.reduce(
-    (sum, order) => {
-      const value = orderTotals(order, data);
-      return { pieces: sum.pieces + value.pieces, hours: sum.hours + value.hours, grams: sum.grams + value.grams, cost: sum.cost + value.cost };
-    },
-    { pieces: 0, hours: 0, grams: 0, cost: 0 }
-  );
+  // ----- Resumo de hoje -----
   const late = open.filter((order) => order.dueDate < today).length;
   const dueToday = open.filter((order) => order.dueDate === today).length;
 
-  const byModel = new Map<string, { title: string; quantity: number; queue: number; orders: Set<string>; hours: number; grams: number; next: string }>();
-  open.forEach((order) =>
-    order.items.forEach((item) => {
-      const info = orderItemInfo(item, data);
-      const quantity = Number(item.quantity) || 0;
-      const row = byModel.get(item.modelId) ?? { title: orderItemTitle(item, data.models), quantity: 0, queue: 0, orders: new Set<string>(), hours: 0, grams: 0, next: order.dueDate };
-      row.quantity += quantity;
-      if (order.status === "queue") row.queue += quantity;
-      row.orders.add(order.id);
-      row.hours += (info?.hours ?? 0) * quantity;
-      row.grams += (info?.grams ?? 0) * quantity;
-      if (order.dueDate < row.next) row.next = order.dueDate;
-      byModel.set(item.modelId, row);
-    })
-  );
-  const modelRows = [...byModel.values()].sort((a, b) => b.quantity - a.quantity);
+  // ----- Impressões: modelos na fila, agrupados em levas -----
+  const jobs = printJobs(data.orders, data.models, () => "Modelo excluído");
+  const totalBatches = jobs.reduce((sum, job) => sum + job.batches.length, 0);
+  const totalPrintHours = jobs.reduce((sum, job) => sum + job.hours, 0);
 
-  const byDay = new Map<string, { orders: number; pieces: number; hours: number; grams: number; models: Map<string, number> }>();
-  open.forEach((order) => {
-    const value = orderTotals(order, data);
-    const row = byDay.get(order.dueDate) ?? { orders: 0, pieces: 0, hours: 0, grams: 0, models: new Map<string, number>() };
-    row.orders += 1;
-    row.pieces += value.pieces;
-    row.hours += value.hours;
-    row.grams += value.grams;
-    order.items.forEach((item) => {
-      const title = orderItemTitle(item, data.models);
-      row.models.set(title, (row.models.get(title) ?? 0) + (Number(item.quantity) || 0));
-    });
-    byDay.set(order.dueDate, row);
-  });
-  const dayRows = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  function sendBatch(modelId: string, batch: { lines: Array<{ orderId: string; quantity: number }> }) {
+    onChange((current) => ({
+      ...current,
+      orders: current.orders.map((order) => {
+        const lines = batch.lines.filter((line) => line.orderId === order.id);
+        return lines.reduce((result, line) => moveUnits(result, modelId, "queue", "printing", line.quantity), order);
+      })
+    }));
+  }
 
   const tabs: Array<{ id: OrderTab; label: string; count: number }> = [
     { id: "line", label: "Esteira", count: open.length },
-    ...orderStatuses.map((status) => ({ id: status.id as OrderTab, label: status.label, count: data.orders.filter((order) => order.status === status.id).length }))
+    ...orderStatuses.map((status) => ({ id: status.id as OrderTab, label: status.label, count: partCards(status.id).length }))
   ];
+
+  function renderItems(card: OrderCard) {
+    return (
+      <ul className="maker-card-items">
+        {card.items.map((item, index) => {
+          const itemState = itemStatus(card.order, item);
+          return (
+            <li key={`${item.modelId}:${itemState}:${index}`}>
+              <span>{item.quantity}× {orderItemTitle(item, data.models)}</span>
+              {card.line && card.split && <span className="maker-chip" style={{ color: statusOf(itemState).color, borderColor: statusOf(itemState).color }}>{statusOf(itemState).label}</span>}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  function renderActions(card: OrderCard, className: string) {
+    const statusIndex = stageIndex(card.status);
+    const next = orderStatuses[statusIndex + 1];
+    const previous = orderStatuses[statusIndex - 1];
+
+    return (
+      <div className={className} onClick={(event) => event.stopPropagation()}>
+        {previous && <button aria-label={`Voltar para ${previous.label}`} className="maker-icon-btn" onClick={() => move(card, previous.id)} title={`Voltar para ${previous.label}`} type="button"><ChevronLeft size={14} /></button>}
+        {next && <button aria-label={`Avançar para ${next.label}`} className="maker-icon-btn" onClick={() => move(card, next.id)} title={`Avançar para ${next.label}`} type="button"><ChevronRight size={14} /></button>}
+        <button aria-label="Excluir pedido" className="maker-icon-btn danger" onClick={() => remove(card.order)} title="Excluir pedido" type="button"><Trash2 size={13} /></button>
+      </div>
+    );
+  }
 
   return (
     <>
+      <section className="mt-panel maker-today">
+        <h2 className="maker-title">Resumo de hoje</h2>
+        <div className="maker-stats">
+          <Stat label="Pedidos em aberto" value={open.length} />
+          <Stat alert={dueToday > 0} label="Entregas hoje" value={dueToday} />
+          <Stat alert={late > 0} label="Atrasados" value={late} />
+        </div>
+      </section>
+
       <section className="mt-panel">
         <div className="mt-head">
           <div>
@@ -755,18 +811,17 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
           <div className="maker-head-actions">
             {isEmpty && <button className="mt-btn" onClick={() => onChange(makerSampleData())} type="button">Carregar dados de teste</button>}
             <div className="mt-segment maker-view-toggle" role="group" aria-label="Modo de visualização">
-              <button className={view === "tabs" ? "active" : ""} onClick={() => changeView("tabs")} type="button">Abas</button>
-              <button className={view === "board" ? "active" : ""} onClick={() => changeView("board")} type="button">Por abas</button>
+              <button aria-label="Abas (lista)" className={view === "tabs" ? "active" : ""} onClick={() => changeView("tabs")} title="Abas (lista)" type="button"><List size={17} /></button>
+              <button aria-label="Por abas (quadro)" className={view === "board" ? "active" : ""} onClick={() => changeView("board")} title="Por abas (quadro)" type="button"><Columns3 size={17} /></button>
             </div>
             <button className="mt-btn primary" onClick={() => setEditing("new")} type="button"><Plus size={16} /> Novo pedido</button>
           </div>
         </div>
+
         {view === "board" ? (
           <div className="maker-board" aria-label="Pedidos por etapa">
-            {orderStatuses.map((status, statusIndex) => {
-              const cards = data.orders.filter((order) => order.status === status.id).sort(status.id === "delivered" ? (a, b) => productionOrder(b, a) : productionOrder);
-              const next = orderStatuses[statusIndex + 1];
-              const previous = orderStatuses[statusIndex - 1];
+            {orderStatuses.map((status) => {
+              const cards = partCards(status.id);
 
               return (
                 <section
@@ -776,9 +831,9 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
                   onDragOver={(event) => { event.preventDefault(); setDragOver(status.id); }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    const dropped = data.orders.find((order) => order.id === (dragId ?? event.dataTransfer.getData("text/plain")));
-                    if (dropped && dropped.status !== status.id) move(dropped, status.id);
-                    setDragId(null);
+                    const dropped = drag && data.orders.find((order) => order.id === drag.orderId);
+                    if (dropped && drag && drag.from !== status.id) updateOrder(dropped.id, (order) => movePart(order, drag.from, status.id));
+                    setDrag(null);
                     setDragOver(null);
                   }}
                 >
@@ -788,32 +843,29 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
                   </header>
                   <div className="maker-column-body">
                     {cards.length === 0 && <p className="maker-column-empty">Arraste um pedido para cá</p>}
-                    {cards.map((order) => {
-                      const value = orderTotals(order, data);
-                      const badge = order.status !== "delivered" ? dueBadge(order.dueDate) : null;
+                    {cards.map((card) => {
+                      const value = orderTotals({ items: card.items }, data);
+                      const badge = status.id !== "delivered" ? dueBadge(card.order.dueDate) : null;
 
                       return (
                         <article
-                          className={`maker-card ${badge?.tone === "late" ? "late" : ""} ${dragId === order.id ? "dragging" : ""}`}
+                          className={`maker-card ${badge?.tone === "late" ? "late" : ""} ${drag?.orderId === card.order.id && drag.from === status.id ? "dragging" : ""}`}
                           draggable
-                          key={order.id}
-                          onClick={() => setEditing(order)}
-                          onDragEnd={() => { setDragId(null); setDragOver(null); }}
-                          onDragStart={(event) => { setDragId(order.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", order.id); }}
+                          key={card.key}
+                          onClick={() => setEditing(card.order)}
+                          onDragEnd={() => { setDrag(null); setDragOver(null); }}
+                          onDragStart={(event) => { setDrag({ orderId: card.order.id, from: status.id }); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.order.id); }}
                           style={{ borderLeftColor: status.color }}
                         >
-                          <strong>{clientName(order.clientId)}</strong>
-                          <p>{order.items.map((item) => `${item.quantity}× ${orderItemTitle(item, data.models)}`).join(", ")}</p>
+                          {renderActions(card, "maker-card-corner")}
+                          <strong className="maker-card-title">{clientName(card.order.clientId)}</strong>
+                          {card.split && <small className="mt-muted">Pedido dividido em etapas</small>}
+                          {renderItems(card)}
                           <div className="maker-card-meta">
-                            <span>{formatDay(order.dueDate, false)}</span>
+                            <span>{formatDay(card.order.dueDate, false)}</span>
                             {badge && <span className={`maker-chip due ${badge.tone}`}>{badge.text}</span>}
                           </div>
                           <small className="mt-muted">{value.pieces} peça(s) · {num(value.hours)} h · {brl(value.cost)}</small>
-                          <div className="maker-card-actions" onClick={(event) => event.stopPropagation()}>
-                            {previous && <button aria-label={`Voltar para ${previous.label}`} className="mt-btn small" onClick={() => move(order, previous.id)} title={`Voltar para ${previous.label}`} type="button"><ChevronLeft size={14} /></button>}
-                            {next && <button aria-label={`Avançar para ${next.label}`} className="mt-btn small primary" onClick={() => move(order, next.id)} title={`Avançar para ${next.label}`} type="button"><ChevronRight size={14} /></button>}
-                            <button aria-label="Excluir pedido" className="mt-btn small ghost maker-danger" onClick={() => remove(order)} type="button"><Trash2 size={14} /></button>
-                          </div>
                         </article>
                       );
                     })}
@@ -824,97 +876,128 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
           </div>
         ) : (
           <>
-        <div className="mt-segment maker-tabs" role="tablist">
-          {tabs.map((item) => (
-            <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} role="tab" type="button">
-              {item.label} <span className="mt-count">{item.count}</span>
-            </button>
-          ))}
-        </div>
-        {list.length === 0 ? (
-          <Empty>{tab === "line" ? "Nenhum pedido em produção. Crie um novo pedido." : "Nenhum pedido nesta etapa."}</Empty>
-        ) : (
-          <div className="maker-orders">
-            {list.map((order, index) => {
-              const status = statusOf(order.status);
-              const statusIndex = orderStatuses.findIndex((item) => item.id === order.status);
-              const next = orderStatuses[statusIndex + 1];
-              const previous = orderStatuses[statusIndex - 1];
-              const value = orderTotals(order, data);
-              const badge = order.status !== "delivered" ? dueBadge(order.dueDate) : null;
+            <div className="mt-segment maker-tabs" role="tablist">
+              {tabs.map((item) => (
+                <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} role="tab" type="button">
+                  {item.label} <span className="mt-count">{item.count}</span>
+                </button>
+              ))}
+            </div>
+            {list.length === 0 ? (
+              <Empty>{tab === "line" ? "Nenhum pedido em produção. Crie um novo pedido." : "Nenhum pedido nesta etapa."}</Empty>
+            ) : (
+              <div className="maker-orders">
+                {list.map((card, index) => {
+                  const status = statusOf(card.status);
+                  const value = orderTotals({ items: card.items }, data);
+                  const badge = card.status !== "delivered" ? dueBadge(card.order.dueDate) : null;
 
-              return (
-                <article className={`maker-order ${badge?.tone === "late" ? "late" : ""}`} key={order.id} style={{ borderLeftColor: status.color }}>
-                  <span className="maker-order-pos">{tab === "delivered" ? "✓" : index + 1}</span>
-                  <div className="maker-order-main">
-                    <div className="maker-order-top">
-                      <strong>{clientName(order.clientId)}</strong>
-                      <span className="maker-chip" style={{ color: status.color, borderColor: status.color }}>{status.label}</span>
-                      {badge && <span className={`maker-chip due ${badge.tone}`}>{badge.text}</span>}
-                    </div>
-                    <p>{order.items.map((item) => `${item.quantity}× ${orderItemTitle(item, data.models)}`).join(", ")}</p>
-                    <small className="mt-muted">Entrega {formatDay(order.dueDate)} · {value.pieces} peça(s) · {num(value.hours)} h · {num(value.grams)} g · custo {brl(value.cost)}</small>
-                    {order.notes && <small className="mt-muted">📝 {order.notes}</small>}
-                  </div>
-                  <div className="maker-order-actions">
-                    {previous && <button aria-label={`Voltar para ${previous.label}`} className="mt-btn small" onClick={() => move(order, previous.id)} title={`Voltar para ${previous.label}`} type="button"><ChevronLeft size={14} /></button>}
-                    {next && <button className="mt-btn small primary" onClick={() => move(order, next.id)} type="button">{next.label} <ChevronRight size={14} /></button>}
-                    <button className="mt-btn small" onClick={() => setEditing(order)} type="button">Editar</button>
-                    <button aria-label="Excluir pedido" className="mt-btn small ghost maker-danger" onClick={() => remove(order)} type="button"><Trash2 size={14} /></button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
+                  return (
+                    <article className={`maker-order ${badge?.tone === "late" ? "late" : ""}`} key={card.key} style={{ borderLeftColor: status.color }}>
+                      <span className="maker-order-pos">{tab === "delivered" ? "✓" : index + 1}</span>
+                      <div className="maker-order-main">
+                        <div className="maker-order-top">
+                          <strong>{clientName(card.order.clientId)}</strong>
+                          {!(card.line && card.split) && <span className="maker-chip" style={{ color: status.color, borderColor: status.color }}>{status.label}</span>}
+                          {badge && <span className={`maker-chip due ${badge.tone}`}>{badge.text}</span>}
+                        </div>
+                        {renderItems(card)}
+                        <small className="mt-muted">Entrega {formatDay(card.order.dueDate)} · {value.pieces} peça(s) · {num(value.hours)} h · {num(value.grams)} g · custo {brl(value.cost)}</small>
+                        {card.order.notes && <small className="mt-muted">📝 {card.order.notes}</small>}
+                      </div>
+                      <div className="maker-order-actions">
+                        <button className="mt-btn small ghost" onClick={() => setEditing(card.order)} type="button">Editar</button>
+                        {renderActions(card, "maker-inline-actions")}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </section>
 
-      <section className="mt-panel maker-summary">
-        <h2 className="maker-title">Resumo da produção <small className="mt-muted">(pedidos ainda não entregues)</small></h2>
-        <div className="maker-stats">
-          <Stat label="Pedidos em aberto" value={open.length} />
-          <Stat label="Peças a produzir" value={totals.pieces} />
-          <Stat alert={dueToday > 0} label="Entregas hoje" value={dueToday} />
-          <Stat alert={late > 0} label="Atrasados" value={late} />
-          <Stat label="Horas de impressão" value={`${num(totals.hours)} h`} />
-          <Stat label="Filamento" value={totals.grams >= 1000 ? `${num(totals.grams / 1000)} kg` : `${num(totals.grams)} g`} />
-          <Stat label="Custo de produção" value={brl(totals.cost)} />
-        </div>
-
-        <h3 className="maker-subtitle">Modelos iguais</h3>
-        {modelRows.length === 0 ? <Empty>Sem modelos a produzir.</Empty> : (
-          <div className="maker-table-wrap">
-            <table className="maker-table">
-              <thead><tr><th>Modelo</th><th className="num">Total</th><th className="num">Na fila</th><th className="num">Pedidos</th><th className="num">Horas</th><th className="num">Filamento</th><th>Próx. entrega</th></tr></thead>
-              <tbody>
-                {modelRows.map((row) => (
-                  <tr key={row.title}>
-                    <td>{row.title}</td><td className="num"><strong>{row.quantity}</strong></td><td className="num">{row.queue}</td><td className="num">{row.orders.size}</td>
-                    <td className="num">{num(row.hours)} h</td><td className="num">{num(row.grams)} g</td><td>{formatDay(row.next)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <section className="mt-panel maker-prints">
+        <div className="mt-head">
+          <div>
+            <h2 className="maker-title">Impressões</h2>
+            <p className="mt-muted">{jobs.length} modelo(s) · {totalBatches} leva(s) · {num(totalPrintHours)} h · pela entrega mais próxima</p>
           </div>
-        )}
+        </div>
+        {jobs.length === 0 ? (
+          <Empty>Nada na fila para imprimir.</Empty>
+        ) : (
+          <div className="maker-print-list">
+            {jobs.map((job) => {
+              const isOpen = expandedJobs.includes(job.modelId);
+              const badge = dueBadge(job.nextDue);
 
-        <h3 className="maker-subtitle">Produção por dia de entrega</h3>
-        {dayRows.length === 0 ? <Empty>Nenhuma entrega pendente.</Empty> : (
-          <div className="maker-table-wrap">
-            <table className="maker-table">
-              <thead><tr><th>Entrega</th><th className="num">Pedidos</th><th className="num">Peças</th><th className="num">Horas</th><th className="num">Filamento</th><th>Modelos</th></tr></thead>
-              <tbody>
-                {dayRows.map(([day, row]) => (
-                  <tr className={day < today ? "late" : day === today ? "today" : ""} key={day}>
-                    <td>{day < today ? "Atrasado · " : day === today ? "Hoje · " : ""}{formatDay(day)}</td>
-                    <td className="num">{row.orders}</td><td className="num">{row.pieces}</td><td className="num">{num(row.hours)} h</td><td className="num">{num(row.grams)} g</td>
-                    <td className="wrap">{[...row.models.entries()].map(([title, quantity]) => `${quantity}× ${title}`).join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              return (
+                <div className="maker-print" key={job.modelId}>
+                  <div className="maker-print-head">
+                    <button
+                      aria-expanded={isOpen}
+                      aria-label={`${isOpen ? "Recolher" : "Expandir"} ${job.title}`}
+                      className="maker-icon-btn"
+                      onClick={() => setExpandedJobs((current) => (current.includes(job.modelId) ? current.filter((id) => id !== job.modelId) : [...current, job.modelId]))}
+                      type="button"
+                    >
+                      {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                    <div className="maker-print-info">
+                      <strong>{job.title}</strong>
+                      <small className="mt-muted">
+                        {job.pending} un · {job.perPrint} por impressão · {job.batches.length} leva(s) · {num(job.hours)} h · entrega {formatDay(job.nextDue, false)}
+                      </small>
+                    </div>
+                    <span className={`maker-chip due ${badge.tone}`}>{badge.text}</span>
+                    <button
+                      aria-label={`Enviar a próxima leva de ${job.title} para impressão`}
+                      className="maker-icon-btn primary"
+                      onClick={() => sendBatch(job.modelId, job.batches[0])}
+                      title="Próxima leva foi para a impressão"
+                      type="button"
+                    >
+                      <ArrowRight size={15} />
+                    </button>
+                  </div>
+
+                  {isOpen && (
+                    <div className="maker-batches">
+                      {job.batches.map((batch, index) => (
+                        <div className="maker-batch" key={index}>
+                          <div className="maker-batch-info">
+                            <strong>Leva {index + 1}</strong>
+                            <small className="mt-muted">{batch.units} un · {num(job.model?.hours)} h</small>
+                            <ul>
+                              {batch.lines.map((line) => {
+                                const order = data.orders.find((item) => item.id === line.orderId);
+                                return (
+                                  <li key={line.orderId}>
+                                    {order ? clientName(order.clientId) : "Cliente excluído"} — {line.quantity}×
+                                    {order && <small className="mt-muted"> · entrega {formatDay(order.dueDate, false)}</small>}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                          <button
+                            aria-label={`Leva ${index + 1} de ${job.title} foi para a impressão`}
+                            className="maker-icon-btn primary"
+                            onClick={() => sendBatch(job.modelId, batch)}
+                            title="Esta leva foi para a impressão"
+                            type="button"
+                          >
+                            <ArrowRight size={15} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -952,11 +1035,13 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
 
   function addItem(modelId: string, amount: number) {
     setItems((current) => {
-      const existing = current.find((item) => item.modelId === modelId);
+      // Pedido dividido em etapas: o item novo entra na etapa do pedido; senão acompanha o pedido.
+      const newStatus = order && current.some((item) => item.status) ? order.status : undefined;
+      const existing = current.find((item) => item.modelId === modelId && item.status === newStatus);
       if (existing) {
-        return current.map((item) => (item.modelId === modelId ? { ...item, quantityText: String((parseInt(item.quantityText, 10) || 0) + amount) } : item));
+        return current.map((item) => (item === existing ? { ...item, quantityText: String((parseInt(item.quantityText, 10) || 0) + amount) } : item));
       }
-      return [...current, { modelId, quantity: amount, quantityText: String(amount) }];
+      return [...current, { modelId, quantity: amount, quantityText: String(amount), status: newStatus }];
     });
     setError("");
   }
@@ -975,11 +1060,12 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
       notes: notes.trim() || undefined,
       deliveredAt: status === "delivered" ? order?.deliveredAt ?? new Date().toISOString() : null,
       // Custo congelado: itens que já tinham custo guardado o mantêm, a não ser que peça para recalcular.
-      items: parsedItems.map((item) => ({ modelId: item.modelId, quantity: item.quantity, snap: orderItemInfo(item, data, recalculate) }))
+      items: parsedItems.map((item) => ({ modelId: item.modelId, quantity: item.quantity, status: item.status, snap: orderItemInfo(item, data, recalculate) }))
     };
+    const normalized = normalizeOrder(saved);
     onChange((current) => ({
       ...current,
-      orders: order ? current.orders.map((item) => (item.id === saved.id ? saved : item)) : [...current.orders, saved]
+      orders: order ? current.orders.map((item) => (item.id === saved.id ? normalized : item)) : [...current.orders, normalized]
     }));
     onClose();
   }
@@ -1032,9 +1118,9 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
               {parsedItems.map((item, index) => {
                 const info = orderItemInfo(item, data, recalculate);
                 return (
-                  <div className="maker-line" key={item.modelId}>
+                  <div className="maker-line" key={`${item.modelId}:${item.status ?? ""}:${index}`}>
                     <div className="maker-line-info">
-                      <strong>{info?.title ?? "Modelo excluído"}</strong>
+                      <strong>{info?.title ?? "Modelo excluído"}{item.status && <span className="maker-chip" style={{ marginLeft: 8, color: statusOf(item.status).color, borderColor: statusOf(item.status).color }}>{statusOf(item.status).label}</span>}</strong>
                       {info && <small>{brl(info.cost)} / un · {num(info.hours)} h · {num(info.grams)} g</small>}
                     </div>
                     <div className="maker-line-qty">

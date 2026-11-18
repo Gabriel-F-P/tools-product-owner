@@ -633,3 +633,168 @@
     scroll-snap-align: start;
   }
 }
+
+/* ===== Resumo de hoje, cards com itens, ações discretas e Impressões ===== */
+.maker-today .maker-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.maker-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 12px;
+}
+
+.maker-card {
+  position: relative;
+}
+
+.maker-card-title {
+  padding-right: 84px;
+}
+
+.maker-card-corner {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+}
+
+.maker-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #8a8a8a;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.maker-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f1f1;
+}
+
+.maker-icon-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+}
+
+.maker-icon-btn.primary {
+  width: 32px;
+  height: 32px;
+  background: rgba(143, 255, 0, 0.14);
+  color: #8fff00;
+}
+
+.maker-icon-btn.primary:hover {
+  background: #8fff00;
+  color: #111214;
+}
+
+.maker-inline-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.maker-card-items {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.maker-card-items li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.maker-card-items li::before {
+  content: "•";
+  color: #8a8a8a;
+}
+
+.maker-prints {
+  margin-top: 16px;
+}
+
+.maker-print-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.maker-print {
+  border: 1px solid #303030;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.maker-print-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.maker-print-info {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.maker-batches {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px 48px;
+}
+
+.maker-batch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #303030;
+  border-radius: 10px;
+  background: rgba(24, 24, 24, 0.7);
+}
+
+.maker-batch-info {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.maker-batch-info ul {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+:root:not([data-theme="dark"]) .maker-batch {
+  background: #ffffff;
+}
+
+@media (max-width: 760px) {
+  .maker-today .maker-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .maker-batches {
+    padding-left: 12px;
+  }
+}

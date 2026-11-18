@@ -156,7 +156,15 @@ export function RadialMenu({ activePage, entries, onNavigate }: { activePage: st
         aria-expanded={isOpen}
         aria-label={isOpen ? "Fechar menu" : "Abrir menu"}
         className="radial-toggle"
-        onClick={() => (isOpen ? close() : setIsOpen(true))}
+        onClick={() => {
+          if (isOpen) {
+            close();
+            return;
+          }
+          // Já abre o submenu do menu em que você está.
+          setOpenGroupId(activeGroupId ?? null);
+          setIsOpen(true);
+        }}
         type="button"
       >
         <tna-logo animate="none" variant="symbol" style={{ width: 34 }} />

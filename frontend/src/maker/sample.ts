@@ -22,11 +22,12 @@ export function makerSampleData(): MakerData {
   const labor: MakerMaterial = { id: newMakerId("material"), title: "Mão de obra", description: "Acabamento e preparo", details: "Segue as horas de impressão do modelo", unit: "h", price: 12, createdAt: now };
   const materials = [filament, energy, labor];
 
-  const model = (title: string, grams: number, hours: number): MakerModel => ({
+  const model = (title: string, grams: number, hours: number, perPrint: number): MakerModel => ({
     id: newMakerId("model"),
     title,
     grams,
     hours,
+    perPrint,
     createdAt: now,
     materials: [
       { materialId: filament.id, quantity: grams },
@@ -34,14 +35,14 @@ export function makerSampleData(): MakerData {
       { materialId: labor.id, quantity: null }
     ]
   });
-  const models = [model("Vaso Geométrico", 120, 6), model("Suporte de Celular", 45, 2.5), model("Miniatura de Dragão", 85, 9)];
+  const models = [model("Vaso Geométrico", 120, 6, 2), model("Suporte de Celular", 45, 2.5, 4), model("Miniatura de Dragão", 85, 9, 1)];
 
   // [cliente, modelos (índice, quantidade), dias até a entrega, observação]
   type Draft = [number, Array<[number, number]>, number, string?];
   const plan: Record<MakerOrderStatus, Draft[]> = {
     queue: [
       [0, [[0, 2]], 5, "Cor branca"],
-      [1, [[1, 4]], 8]
+      [1, [[1, 4], [0, 1]], 8]
     ],
     printing: [
       [2, [[2, 1]], 2, "Acabamento fosco"],

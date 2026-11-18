@@ -59,6 +59,8 @@ export interface MakerModel {
   photo?: MakerFileRef;
   grams: number | null;
   hours: number | null;
+  /** Quantas unidades saem de uma vez em cada impressão (padrão 1). */
+  perPrint?: number;
   file?: MakerFileRef;
   materials: MakerModelMaterial[];
   createdAt: string;
@@ -86,6 +88,8 @@ export const orderStatuses: Array<{ id: MakerOrderStatus; label: string; color: 
 export interface MakerOrderItem {
   modelId: string;
   quantity: number;
+  /** Etapa deste item, quando difere da do pedido (impressão em levas). */
+  status?: MakerOrderStatus;
   snap?: MakerModelSnapshot;
 }
 
