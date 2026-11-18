@@ -3428,6 +3428,8 @@ function BacklogPage({
   const [selectedBacklogTask, setSelectedBacklogTask] = useState<{ columnIndex: number; entryIndex: number; aiConfig: { story: boolean; criteria: boolean; sp: boolean } } | null>(null);
   const [initialVisibleTabs, setInitialVisibleTabs] = useState(4);
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [mobileBacklogProjectId, setMobileBacklogProjectId] = useState<string | null>(null);
+  const [mobileBacklogColumnTitle, setMobileBacklogColumnTitle] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [draggedEntry, setDraggedEntry] = useState<DraggedBacklogEntry | null>(null);
   const [expandedEpics, setExpandedEpics] = useState<Set<string>>(new Set());
@@ -3792,6 +3794,125 @@ function BacklogPage({
                 {integrationNotice.message}
               </div>
             )}
+
+            {(() => {
+              const mobileProject = projectRows.find((project) => project.id === mobileBacklogProjectId) ?? projectRows.find((project) => project.id === defaultProductId) ?? projectRows[0];
+              const mobileColumnIndex = Math.max(0, visibleBacklogColumns.findIndex((column) => column.title === mobileBacklogColumnTitle));
+              const mobileColumn = visibleBacklogColumns[mobileColumnIndex];
+
+              if (!mobileProject || !mobileColumn) {
+                return (
+                  <section className="board-mobile backlog-mobile" aria-label="Backlog para celular">
+                    <p className="matrix-empty">Você ainda não está inserido em nenhum projeto. Peça a um administrador para adicioná-lo.</p>
+                  </section>
+                );
+              }
+
+              const counts = visibleBacklogColumns.map((column) => column.entries.filter(({ entry }) => entryProductId(entry) === mobileProject.id).length);
+              const cells = mobileColumn.entries.filter(({ entry }) => entryProductId(entry) === mobileProject.id);
+              const isMenuOpen = createMenuColumnIndex === mobileColumnIndex && createMenuProductId === mobileProject.id;
+              const goTab = (step: number) => {
+                const next = visibleBacklogColumns[mobileColumnIndex + step];
+                if (next) setMobileBacklogColumnTitle(next.title);
+              };
+
+              return (
+                <section className="board-mobile backlog-mobile" aria-label="Backlog para celular" {...swipeHandlers(goTab)}>
+                  <div className="mobile-projects" role="tablist" aria-label="Projetos">
+                    {projectRows.map((project) => {
+                      const total = visibleBacklogColumns.reduce((sum, column) => sum + column.entries.filter(({ entry }) => entryProductId(entry) === project.id).length, 0);
+                      return (
+                        <button
+                          aria-selected={project.id === mobileProject.id}
+                          className={`mobile-project-chip ${project.id === mobileProject.id ? "active" : ""}`}
+                          key={project.id}
+                          onClick={() => setMobileBacklogProjectId(project.id)}
+                          role="tab"
+                          type="button"
+                        >
+                          {project.name}
+                          <span>{total}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mobile-project-bar">
+                    <strong>{mobileProject.name}</strong>
+                    <span className={`matrix-method-tag ${mobileProject.method ?? "sprint"}`}>{projectMethodLabel[mobileProject.method ?? "sprint"]}</span>
+                  </div>
+
+                  <div className="mobile-tabs" ref={scrollActiveTab} role="tablist" aria-label="Abas do backlog">
+                    {visibleBacklogColumns.map((column, index) => (
+                      <button
+                        aria-selected={index === mobileColumnIndex}
+                        className={`mobile-tab ${column.color} ${index === mobileColumnIndex ? "active" : ""}`}
+                        key={`${column.title}-${index}`}
+                        onClick={() => setMobileBacklogColumnTitle(column.title)}
+                        role="tab"
+                        type="button"
+                      >
+                        <span className={`column-icon ${column.color}`}>{renderBoardIcon(column.icon, 14)}</span>
+                        {column.title}
+                        <span className="mobile-tab-count">{counts[index]}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <article className={`kanban-column matrix-cell backlog-tab-column mobile-cards ${mobileColumn.color}`}>
+                    <MatrixCardList count={cells.length}>
+                      {cells.map(({ entry, entryIndex }) => (
+                        <BacklogTabEntryCard
+                          entry={entry}
+                          categories={categories}
+                          members={mobileProject.members}
+                          expanded={isEpic(entry) ? expandedEpics.has(entry.id) : false}
+                          isDragging={false}
+                          key={isEpic(entry) ? entry.id : `item-${entry.order}`}
+                          onDragEnd={() => setDraggedEntry(null)}
+                          onDragOver={handleBacklogDragOver}
+                          onEpicItemDragStart={(event, itemIndex) => handleBacklogEpicItemDragStart(event, mobileColumnIndex, entryIndex, itemIndex)}
+                          onDragStart={(event) => handleBacklogDragStart(event, mobileColumnIndex, entryIndex)}
+                          onDrop={(event) => handleBacklogDrop(event, mobileColumnIndex, entryIndex, mobileProject.id)}
+                          onOpenTask={setSelectedTask}
+                          onOpenEntry={() => setSelectedBacklogTask({
+                            aiConfig: { criteria: !!mobileColumn.aiCriteriaEnabled, sp: !!mobileColumn.aiStoryPointsEnabled, story: !!mobileColumn.aiStoryEnabled },
+                            columnIndex: mobileColumnIndex,
+                            entryIndex
+                          })}
+                          onToggleEpic={() => isEpic(entry) && toggleEpic(entry.id)}
+                          onUpdateMeta={(updates) => updateBacklogEntryMeta(mobileColumnIndex, entryIndex, updates)}
+                          onSaveLinearLink={(linearUrl) => saveBacklogEntryLinearLink(mobileColumnIndex, entryIndex, linearUrl)}
+                          onRequestDelete={() => setDeleteTarget({ columnIndex: mobileColumnIndex, entryIndex, title: entry.name })}
+                        />
+                      ))}
+                    </MatrixCardList>
+                    <span className="matrix-add-wrap">
+                      <button
+                        aria-expanded={isMenuOpen}
+                        aria-label={`Criar item em ${mobileColumn.title} (${mobileProject.name})`}
+                        className="add-card-button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCreateMenuColumnIndex(isMenuOpen ? null : mobileColumnIndex);
+                          setCreateMenuProductId(isMenuOpen ? null : mobileProject.id);
+                        }}
+                        type="button"
+                      >
+                        <Plus size={17} />
+                        Adicionar
+                      </button>
+                      {isMenuOpen && (
+                        <span className="column-create-menu matrix-add-menu">
+                          <button type="button" onClick={() => openCreateModal(mobileColumnIndex, "task", mobileProject.id)}>Tarefa</button>
+                          <button type="button" onClick={() => openCreateModal(mobileColumnIndex, "epic", mobileProject.id)}>Epico</button>
+                        </span>
+                      )}
+                    </span>
+                  </article>
+                </section>
+              );
+            })()}
 
             <DualHorizontalScroll className="backlog-scroll-frame">
               <section className="board-matrix backlog-matrix" aria-label="Backlog por projeto" style={{ "--matrix-columns": visibleBacklogColumns.length } as CSSProperties}>
@@ -5807,9 +5928,13 @@ function BoardPage({
         const mobileSprint = sprintOfProject(mobileProject.id);
         const mobileCounts = filteredColumns.map((column) => column.cards.filter(({ card }) => cardInRow(card, mobileProject)).length);
         const mobileCells = mobileColumn.cards.filter(({ card }) => cardInRow(card, mobileProject));
+        const goTab = (step: number) => {
+          const next = filteredColumns[mobileColumnIndex + step];
+          if (next) setMobileColumnTitle(next.title);
+        };
 
         return (
-          <section className="board-mobile" aria-label="Board para celular">
+          <section className="board-mobile" aria-label="Board para celular" {...swipeHandlers(goTab)}>
             <div className="mobile-projects" role="tablist" aria-label="Projetos">
               {projectRows.map((project) => {
                 const total = filteredColumns.reduce((sum, column) => sum + column.cards.filter(({ card }) => cardInRow(card, project)).length, 0);
@@ -5847,7 +5972,7 @@ function BoardPage({
               )}
             </div>
 
-            <div className="mobile-tabs" role="tablist" aria-label="Abas do board">
+            <div className="mobile-tabs" ref={scrollActiveTab} role="tablist" aria-label="Abas do board">
               {filteredColumns.map((column, index) => (
                 <button
                   aria-selected={index === mobileColumnIndex}
@@ -7829,7 +7954,7 @@ function Topbar({
 
   return (
     <header className="topbar">
-      <div>
+      <div className="topbar-title">
         <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>
@@ -7837,7 +7962,7 @@ function Topbar({
       <div className="top-actions">
         <button className="theme-toggle" type="button" onClick={onToggleTheme} aria-label={`Alternar para tema ${theme === "dark" ? "claro" : "escuro"}`}>
           {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-          <span>{theme === "dark" ? "Claro" : "Escuro"}</span>
+          <span className="theme-toggle-label">{theme === "dark" ? "Claro" : "Escuro"}</span>
         </button>
         <button className="icon-button" type="button" aria-label="Notificacoes">
           <Bell size={22} />
@@ -7876,6 +8001,27 @@ function Topbar({
       </div>
     </header>
   );
+}
+
+/** Arrastar o dedo para o lado troca de aba (celular). */
+function swipeHandlers(go: (step: number) => void) {
+  let originX = 0;
+  let originY = 0;
+  return {
+    onTouchStart: (event: React.TouchEvent) => { originX = event.touches[0].clientX; originY = event.touches[0].clientY; },
+    onTouchEnd: (event: React.TouchEvent) => {
+      const dx = event.changedTouches[0].clientX - originX;
+      const dy = event.changedTouches[0].clientY - originY;
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      go(dx < 0 ? 1 : -1);
+    }
+  };
+}
+
+/** Mantém a aba ativa visível na faixa de abas. */
+function scrollActiveTab(element: HTMLElement | null) {
+  const active = element?.querySelector<HTMLElement>(".mobile-tab.active");
+  if (element && active) element.scrollTo({ left: active.offsetLeft - 12, behavior: "smooth" });
 }
 
 function ViewModeToggle({ value, onChange }: { value: ViewMode; onChange: (value: ViewMode) => void }) {

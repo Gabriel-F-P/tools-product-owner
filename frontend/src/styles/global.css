@@ -6803,12 +6803,72 @@ input[type="checkbox"] {
     padding: 28px 16px;
   }
 
-  .topbar {
-    display: grid;
+  .topbar,
+  .board-page .topbar,
+  .backlog-page .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 14px;
+    padding-right: 0;
+  }
+
+  .topbar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .topbar h1 {
+    font-size: 22px;
+  }
+
+  .topbar p {
+    display: none;
   }
 
   .top-actions {
-    justify-content: flex-start;
+    flex: none;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .theme-toggle {
+    width: 38px;
+    min-height: 38px;
+    padding: 0;
+  }
+
+  .theme-toggle-label,
+  .profile-button svg:last-child {
+    display: none;
+  }
+
+  .icon-button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .backlog-page {
+    padding: 20px 16px 0;
+  }
+
+  .backlog-main {
+    padding: 8px 0 24px;
+  }
+
+  .backlog-page .backlog-scroll-frame {
+    display: none;
+  }
+
+  .backlog-page .view-mode-toggle {
+    flex: none;
   }
 
   .sidebar-nav {
@@ -6847,8 +6907,14 @@ input[type="checkbox"] {
   }
 
   .backlog-actions {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .backlog-actions .square-action {
+    flex: none;
   }
 
   .sprints-actions {
