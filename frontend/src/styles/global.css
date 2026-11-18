@@ -7861,3 +7861,13 @@ input[type="checkbox"] {
     border-top: 0;
   }
 }
+
+.backlog-view-row {
+  margin: 0 16px 12px;
+}
+
+@media (max-width: 760px) {
+  .backlog-page .filters-row .clear-filter-button {
+    grid-column: 1 / -1;
+  }
+}

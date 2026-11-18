@@ -306,6 +306,14 @@ const defaultProducts = [
     members: [
       { id: "member-gabriel", name: "Gabriel Fonseca", email: "gabriel.fonseca@toolzz.me", permission: "Admin" }
     ]
+  },
+  {
+    id: "product-kanban-demo",
+    name: "Suporte",
+    method: "kanban",
+    members: [
+      { id: "member-gabriel-suporte", name: "Gabriel Fonseca", email: "gabriel.fonseca@toolzz.me", permission: "Admin" }
+    ]
   }
 ] satisfies ProductAccess[];
 
@@ -899,7 +907,15 @@ export function App() {
     if (snapshot.makerConfig) setMakerConfig({ ...emptyMakerData, ...snapshot.makerConfig });
     if (typeof snapshot.initialVisibleTabs === "number") setInitialVisibleTabs(snapshot.initialVisibleTabs);
     if (snapshot.planningConfig) setPlanningConfig(snapshot.planningConfig);
-    if (snapshot.products) setProducts(snapshot.products);
+    if (snapshot.products) {
+      // Projeto de exemplo em Kanban: garante que exista nos dados já salvos.
+      let next = snapshot.products;
+      if (!next.some((product) => product.id === "product-kanban-demo")) {
+        const base = next[0];
+        next = [...next, { id: "product-kanban-demo", name: "Suporte", method: "kanban", members: (base?.members ?? []).map((member) => ({ ...member, id: `${member.id}-suporte` })) }];
+      }
+      setProducts(next);
+    }
     if (snapshot.activeProductId) setActiveProductId(snapshot.activeProductId);
     if (snapshot.retroConfig) setRetroConfig(snapshot.retroConfig);
     if (snapshot.sprintConfig) setSprintConfig(snapshot.sprintConfig);
@@ -3764,27 +3780,27 @@ function BacklogPage({
                 <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar titulo do card..." />
                 <ListFilter size={18} />
               </label>
-              <div className="backlog-actions">
-                <ViewModeToggle value={viewMode} onChange={setViewMode} />
-                <button className="square-action" type="button" onClick={() => setIsBacklogSettingsOpen(true)} aria-label="Configurar backlog" title="Configurar backlog">
-                  <Settings size={18} />
-                </button>
-              </div>
             </div>
 
             <div className="filters-row">
-              {["Sprint", "Categoria", "Priorizacao"].map((filter) => (
+              {["Sprint", "Priorizacao"].map((filter) => (
                 <label key={filter}>
                   <span>{filter}:</span>
                   <select>
                     <option>Todas</option>
-                    {filter === "Categoria" && categories.map((category) => <option key={category.id}>{category.name}</option>)}
                   </select>
                 </label>
               ))}
               <button className="clear-filter-button" type="button">
                 <RefreshCcw size={16} />
                 Limpar filtros
+              </button>
+            </div>
+
+            <div className="backlog-actions backlog-view-row">
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
+              <button className="square-action" type="button" onClick={() => setIsBacklogSettingsOpen(true)} aria-label="Configurar backlog" title="Configurar backlog">
+                <Settings size={18} />
               </button>
             </div>
 
