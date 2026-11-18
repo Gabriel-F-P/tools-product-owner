@@ -156,10 +156,15 @@ export function maskCep(value: string) {
   return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
 }
 
-/** Quantidade usada de um material: em horas, segue as horas de impressão do modelo. */
-export function materialQuantity(item: MakerModelMaterial, material: MakerMaterial, hours: number | null) {
-  return material.unit === "h" ? Number(hours) || 0 : Number(item.quantity) || 0;
+/** Quantidade usada de um material: em horas segue as horas de impressão; em gramas, a gramatura do modelo. */
+export function materialQuantity(item: MakerModelMaterial, material: MakerMaterial, hours: number | null, grams: number | null = null) {
+  if (material.unit === "h") return Number(hours) || 0;
+  if (material.unit === "g") return Number(grams) || 0;
+  return Number(item.quantity) || 0;
 }
+
+/** Materiais em horas ou gramas usam automaticamente os dados do modelo. */
+export const isAutoUnit = (unit: MakerUnit) => unit === "h" || unit === "g";
 
 /** Custo atual de um modelo (preços de hoje). */
 export function snapshotModel(model: MakerModel | undefined, materials: MakerMaterial[]): MakerModelSnapshot | undefined {
@@ -169,7 +174,7 @@ export function snapshotModel(model: MakerModel | undefined, materials: MakerMat
     .map((item) => {
       const material = byId.get(item.materialId);
       if (!material) return null;
-      const quantity = materialQuantity(item, material, model.hours);
+      const quantity = materialQuantity(item, material, model.hours, model.grams);
       const price = Number(material.price) || 0;
       return { materialId: material.id, title: material.title, unit: material.unit, price, quantity, cost: quantity * price };
     })

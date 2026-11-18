@@ -4,6 +4,7 @@ import {
   Box,
   Camera,
   ArrowRight,
+  Calculator,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -22,6 +23,7 @@ import {
   X
 } from "lucide-react";
 import { makerSampleData } from "./sample";
+import { SearchSelect } from "./SearchSelect";
 import { itemStatus, moveUnits, movePart, normalizeOrder, orderParts, printJobs, stageIndex } from "./orders";
 import type { OrderPart } from "./orders";
 import { deleteMakerFile, formatBytes, makerFileUrl, resizeImage, storeMakerFile } from "./files";
@@ -29,6 +31,7 @@ import {
   brl,
   daysUntil,
   formatDay,
+  isAutoUnit,
   isoOf,
   localIso,
   maskCep,
@@ -346,6 +349,7 @@ function MaterialsSection({ data, onChange }: { data: MakerData; onChange: Updat
                 {material.details && <p className="mt-muted maker-small">{material.details}</p>}
                 <p className="maker-price">{brl(material.price)} <span className="mt-muted">/ {unitShort[material.unit]}</span></p>
                 {material.unit === "h" && <span className="maker-tag">Usa as horas de impressão</span>}
+                {material.unit === "g" && <span className="maker-tag">Usa a gramatura do modelo</span>}
               </div>
               <div className="maker-card-actions">
                 <button className="mt-btn small" onClick={() => setEditing(material)} type="button"><Pencil size={14} /> Editar</button>
@@ -409,6 +413,7 @@ function MaterialModal({ material, onChange, onClose }: { material?: MakerMateri
           <label className="mt-field">Valor (R$ por {unitShort[unit]}) *<input inputMode="decimal" min="0" onChange={(event) => setPrice(event.target.value)} placeholder="0,00" step="any" type="number" value={price} /></label>
         </div>
         {unit === "h" && <p className="mt-hint">Materiais em horas (como a energia) usam automaticamente as horas de impressão de cada modelo.</p>}
+        {unit === "g" && <p className="mt-hint">Materiais em gramas (como o filamento) usam automaticamente a gramatura de cada modelo.</p>}
         {error && <p className="mt-error" role="alert">{error}</p>}
         <button hidden type="submit" />
       </form>
@@ -494,7 +499,7 @@ function ModelModal({ data, model, onChange, onClose, onSaved }: { data: MakerDa
   const hoursValue = toNumber(hours);
   const lines = items.map((item) => {
     const material = byId.get(item.materialId);
-    const quantity = material ? materialQuantity({ materialId: item.materialId, quantity: toNumber(item.quantity) }, material, hoursValue) : 0;
+    const quantity = material ? materialQuantity({ materialId: item.materialId, quantity: toNumber(item.quantity) }, material, hoursValue, toNumber(grams)) : 0;
     return { item, material, quantity, cost: material ? quantity * (Number(material.price) || 0) : 0 };
   });
   const total = lines.reduce((sum, line) => sum + line.cost, 0);
@@ -542,7 +547,7 @@ function ModelModal({ data, model, onChange, onClose, onSaved }: { data: MakerDa
       file,
       materials: items.map<MakerModelMaterial>((item) => ({
         materialId: item.materialId,
-        quantity: byId.get(item.materialId)?.unit === "h" ? null : toNumber(item.quantity)
+        quantity: isAutoUnit(byId.get(item.materialId)?.unit ?? "un") ? null : toNumber(item.quantity)
       }))
     };
     // Arquivos substituídos ou removidos saem do servidor.
@@ -623,7 +628,7 @@ function ModelModal({ data, model, onChange, onClose, onSaved }: { data: MakerDa
               <div className="maker-line" key={item.materialId}>
                 <div className="maker-line-info">
                   <strong>{material?.title ?? "Material excluído"}</strong>
-                  {material && <small>{brl(material.price)} / {unitShort[material.unit]}{material.unit === "h" ? " · usa as horas" : ""}</small>}
+                  {material && <small>{brl(material.price)} / {unitShort[material.unit]}{material.unit === "h" ? " · usa as horas" : material.unit === "g" ? " · usa a gramatura" : ""}</small>}
                 </div>
                 <div className="maker-line-qty">
                   <input
@@ -631,10 +636,10 @@ function ModelModal({ data, model, onChange, onClose, onSaved }: { data: MakerDa
                     min="0"
                     onChange={(event) => setItems((current) => current.map((entry, entryIndex) => (entryIndex === index ? { ...entry, quantity: event.target.value } : entry)))}
                     placeholder="0"
-                    readOnly={material?.unit === "h"}
+                    readOnly={material ? isAutoUnit(material.unit) : false}
                     step="any"
                     type="number"
-                    value={material?.unit === "h" ? String(quantity) : item.quantity}
+                    value={material && isAutoUnit(material.unit) ? String(quantity) : item.quantity}
                   />
                   <span>{material ? unitShort[material.unit] : ""}</span>
                 </div>
@@ -691,6 +696,7 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
   const [dragOver, setDragOver] = useState<MakerOrderStatus | null>(null);
   const [expandedJobs, setExpandedJobs] = useState<string[]>([]);
   const [editing, setEditing] = useState<MakerOrder | "new" | null>(null);
+  const [simulating, setSimulating] = useState(false);
   const isEmpty = !data.clients.length && !data.materials.length && !data.models.length && !data.orders.length;
   const clientName = (id: string) => data.clients.find((client) => client.id === id)?.name ?? "Cliente excluído";
   const today = localIso();
@@ -814,6 +820,7 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
               <button aria-label="Abas (lista)" className={view === "tabs" ? "active" : ""} onClick={() => changeView("tabs")} title="Abas (lista)" type="button"><List size={17} /></button>
               <button aria-label="Por abas (quadro)" className={view === "board" ? "active" : ""} onClick={() => changeView("board")} title="Por abas (quadro)" type="button"><Columns3 size={17} /></button>
             </div>
+            <button className="mt-btn" onClick={() => setSimulating(true)} type="button"><Calculator size={16} /> Simular pedido</button>
             <button className="mt-btn primary" onClick={() => setEditing("new")} type="button"><Plus size={16} /> Novo pedido</button>
           </div>
         </div>
@@ -1003,7 +1010,96 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
       </section>
 
       {editing && <OrderModal data={data} onChange={onChange} onClose={() => setEditing(null)} order={editing === "new" ? undefined : editing} />}
+      {simulating && <SimulateModal data={data} onClose={() => setSimulating(false)} />}
     </>
+  );
+}
+
+/** Simulação de pedido: escolhe só os modelos e vê o valor total (nada é salvo). */
+function SimulateModal({ data, onClose }: { data: MakerData; onClose: () => void }) {
+  const [items, setItems] = useState<Array<{ modelId: string; quantityText: string }>>([]);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [error, setError] = useState("");
+  const models = [...data.models].sort((a, b) => a.title.localeCompare(b.title));
+  const parsed = items.map((item) => ({ modelId: item.modelId, quantity: Math.max(1, parseInt(item.quantityText, 10) || 0) }));
+  const totals = orderTotals({ items: parsed }, data, true);
+
+  function add() {
+    if (!selectedModel) return setError("Selecione um modelo.");
+    const amount = Math.max(1, parseInt(quantity, 10) || 1);
+    setItems((current) => {
+      const existing = current.find((item) => item.modelId === selectedModel);
+      if (existing) {
+        return current.map((item) => (item === existing ? { ...item, quantityText: String((parseInt(item.quantityText, 10) || 0) + amount) } : item));
+      }
+      return [...current, { modelId: selectedModel, quantityText: String(amount) }];
+    });
+    setSelectedModel("");
+    setQuantity("1");
+    setError("");
+  }
+
+  return (
+    <MakerModal
+      footer={
+        <>
+          <button className="mt-btn" disabled title="Em breve" type="button">Exportar</button>
+          <button className="mt-btn primary" onClick={onClose} type="button">Fechar</button>
+        </>
+      }
+      onClose={onClose}
+      title="Simular pedido"
+      wide
+    >
+      <div className="mt-form">
+        <div className="mt-field">
+          Modelos
+          <div className="maker-inline">
+            <div className="maker-grow">
+              <SearchSelect
+                emptyText="Nenhum modelo encontrado."
+                onChange={(value) => { setSelectedModel(value); setError(""); }}
+                options={models.map((model) => ({ value: model.id, label: model.title, hint: brl(modelCost(model, data.materials)) }))}
+                placeholder={models.length ? "Buscar modelo…" : "Nenhum modelo cadastrado"}
+                value={selectedModel}
+              />
+            </div>
+            <input aria-label="Quantidade" className="maker-qty" inputMode="numeric" min="1" onChange={(event) => setQuantity(event.target.value)} step="1" type="number" value={quantity} />
+            <button className="mt-btn small" onClick={add} type="button"><Plus size={14} /> Adicionar</button>
+          </div>
+          <div className="maker-lines">
+            {items.length === 0 && <p className="mt-hint">Nenhum modelo adicionado.</p>}
+            {parsed.map((item, index) => {
+              const info = orderItemInfo(item, data, true);
+              return (
+                <div className="maker-line" key={item.modelId}>
+                  <div className="maker-line-info">
+                    <strong>{info?.title ?? "Modelo excluído"}</strong>
+                    {info && <small>{brl(info.cost)} / un · {num(info.hours)} h · {num(info.grams)} g</small>}
+                  </div>
+                  <div className="maker-line-qty">
+                    <input
+                      inputMode="numeric"
+                      min="1"
+                      onChange={(event) => setItems((current) => current.map((entry, entryIndex) => (entryIndex === index ? { ...entry, quantityText: event.target.value } : entry)))}
+                      step="1"
+                      type="number"
+                      value={items[index].quantityText}
+                    />
+                    <span>un</span>
+                  </div>
+                  <strong className="maker-line-cost">{brl((info?.cost ?? 0) * item.quantity)}</strong>
+                  <button aria-label="Remover modelo" className="mt-icon-button" onClick={() => setItems((current) => current.filter((_, entryIndex) => entryIndex !== index))} type="button"><X size={14} /></button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="maker-total"><span>{totals.pieces} peça(s) · {num(totals.hours)} h · {num(totals.grams)} g</span><strong>{brl(totals.cost)}</strong></div>
+        </div>
+        {error && <p className="mt-error" role="alert">{error}</p>}
+      </div>
+    </MakerModal>
   );
 }
 
@@ -1082,10 +1178,15 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
           <div className="mt-field">
             Cliente *
             <div className="maker-inline">
-              <select className="maker-grow" onChange={(event) => { setClientId(event.target.value); setError(""); }} value={clientId}>
-                <option value="">Selecione o cliente…</option>
-                {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-              </select>
+              <div className="maker-grow">
+                <SearchSelect
+                  emptyText="Nenhum cliente encontrado."
+                  onChange={(value) => { setClientId(value); setError(""); }}
+                  options={clients.map((client) => ({ value: client.id, label: client.name }))}
+                  placeholder="Buscar cliente…"
+                  value={clientId}
+                />
+              </div>
               <button aria-label="Novo cliente" className="mt-btn small maker-plus" onClick={() => setNested("client")} title="Novo cliente" type="button"><Plus size={16} /></button>
             </div>
           </div>
@@ -1094,10 +1195,15 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
           <div className="mt-field">
             Modelos *
             <div className="maker-inline">
-              <select className="maker-grow" onChange={(event) => setSelectedModel(event.target.value)} value={selectedModel}>
-                <option value="">{models.length ? "Selecione o modelo…" : "Nenhum modelo cadastrado"}</option>
-                {models.map((model) => <option key={model.id} value={model.id}>{model.title} — {brl(modelCost(model, data.materials))}</option>)}
-              </select>
+              <div className="maker-grow">
+                <SearchSelect
+                  emptyText="Nenhum modelo encontrado."
+                  onChange={setSelectedModel}
+                  options={models.map((model) => ({ value: model.id, label: model.title, hint: brl(modelCost(model, data.materials)) }))}
+                  placeholder={models.length ? "Buscar modelo…" : "Nenhum modelo cadastrado"}
+                  value={selectedModel}
+                />
+              </div>
               <input aria-label="Quantidade" className="maker-qty" inputMode="numeric" min="1" onChange={(event) => setQuantity(event.target.value)} step="1" type="number" value={quantity} />
               <button aria-label="Cadastrar novo modelo" className="mt-btn small maker-plus" onClick={() => setNested("model")} title="Cadastrar novo modelo" type="button"><Plus size={16} /></button>
               <button

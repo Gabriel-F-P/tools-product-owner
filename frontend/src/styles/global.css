@@ -7741,3 +7741,19 @@ input[type="checkbox"] {
     background: #8fff00;
   }
 }
+
+/* Ícones das abas do board: contraste sobre as cores de destaque (claras ficam com ícone escuro). */
+.column-icon {
+  color: #111214;
+}
+
+.column-icon svg {
+  stroke-width: 2.3;
+}
+
+.column-icon.red,
+.column-icon.pink,
+.column-icon.teal,
+.column-icon.slate {
+  color: #ffffff;
+}

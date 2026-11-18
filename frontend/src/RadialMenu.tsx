@@ -9,13 +9,13 @@ type RadialEntry = RadialLink | RadialGroup;
 const isGroup = (entry: RadialEntry): entry is RadialGroup => "children" in entry;
 
 // Geometria (meia-roda voltada para cima; o centro fica na borda inferior da tela).
-const CX = 270;
-const CY = 262;
-const HOLE = 46;
-const INNER_OUT = 150;
+const CX = 300;
+const CY = 300;
+const HOLE = 52;
+const INNER_OUT = 190;
 const GAP = 8;
 const OUTER_IN = INNER_OUT + GAP;
-const OUTER_OUT = 252;
+const OUTER_OUT = 296;
 
 const point = (radius: number, angle: number) => ({
   x: CX + radius * Math.cos(angle),
@@ -72,9 +72,9 @@ function Ring<T extends RadialLink>({
             tabIndex={0}
           >
             <path d={sectorPath(rIn, rOut, a0 - 0.006, a1 + 0.006)} />
-            <foreignObject height={64} width={84} x={mid.x - 42} y={mid.y - 30}>
+            <foreignObject height={76} width={108} x={mid.x - 54} y={mid.y - 36}>
               <div className="radial-label">
-                <span className="radial-icon"><Icon size={20} strokeWidth={2} /></span>
+                <span className="radial-icon"><Icon size={18} strokeWidth={2.4} /></span>
                 <span className="radial-text">{item.label}</span>
               </div>
             </foreignObject>
