@@ -7839,10 +7839,6 @@ input[type="checkbox"] {
     gap: 10px 12px;
   }
 
-  .backlog-page .filters-row .clear-filter-button {
-    grid-column: 1 / -1;
-  }
-
   .backlog-page .filters-row label {
     color: inherit;
     opacity: 0.75;
@@ -7869,5 +7865,87 @@ input[type="checkbox"] {
 @media (max-width: 760px) {
   .backlog-page .filters-row .clear-filter-button {
     grid-column: 1 / -1;
+  }
+}
+
+.filters-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filters-buttons .clear-filter-button {
+  flex: 1 1 auto;
+}
+
+.filters-buttons .square-action {
+  flex: none;
+}
+
+.backlog-view-row {
+  justify-content: center;
+}
+
+.board-view-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.board-list-mode .kanban-card footer {
+  display: none;
+}
+
+.board-list-mode .kanban-card {
+  padding: 8px 12px;
+}
+
+.board-list-mode .kanban-card h3 {
+  font-size: 14px;
+}
+
+@media (min-width: 761px) {
+  .backlog-page .filters-row {
+    grid-template-columns: repeat(2, minmax(150px, 1fr)) auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .backlog-page .filters-row .filters-buttons {
+    grid-column: 1 / -1;
+  }
+
+  .board-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .board-actions .board-search-field,
+  .board-actions .board-view-row {
+    grid-column: 1 / -1;
+  }
+
+  .board-actions .board-view-row {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 760px) {
+  .board-controls,
+  .board-actions > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .board-filter-control select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .backlog-page .backlog-actions.backlog-view-row {
+    justify-content: center;
   }
 }

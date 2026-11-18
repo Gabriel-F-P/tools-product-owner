@@ -47,6 +47,7 @@ import {
   Square,
   Sun,
   Table2,
+  Tag,
   Trash2,
   UserRound,
   UsersRound,
@@ -3791,17 +3792,19 @@ function BacklogPage({
                   </select>
                 </label>
               ))}
-              <button className="clear-filter-button" type="button">
-                <RefreshCcw size={16} />
-                Limpar filtros
-              </button>
+              <div className="filters-buttons">
+                <button className="clear-filter-button" type="button">
+                  <RefreshCcw size={16} />
+                  Limpar filtros
+                </button>
+                <button className="square-action" type="button" onClick={() => setIsBacklogSettingsOpen(true)} aria-label="Configurar backlog" title="Configurar backlog">
+                  <Settings size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="backlog-actions backlog-view-row">
               <ViewModeToggle value={viewMode} onChange={setViewMode} />
-              <button className="square-action" type="button" onClick={() => setIsBacklogSettingsOpen(true)} aria-label="Configurar backlog" title="Configurar backlog">
-                <Settings size={18} />
-              </button>
             </div>
 
             {integrationNotice && (
@@ -3858,7 +3861,7 @@ function BacklogPage({
                     <span className={`matrix-method-tag ${mobileProject.method ?? "sprint"}`}>{projectMethodLabel[mobileProject.method ?? "sprint"]}</span>
                   </div>
 
-                  <div className="mobile-tabs" ref={scrollActiveTab} role="tablist" aria-label="Abas do backlog">
+                  <div className="mobile-tabs" ref={(element) => scrollActiveTab(element)} role="tablist" aria-label="Abas do backlog">
                     {visibleBacklogColumns.map((column, index) => (
                       <button
                         aria-selected={index === mobileColumnIndex}
@@ -5621,6 +5624,8 @@ function BoardPage({
   const [selectedBoardCardTarget, setSelectedBoardCardTarget] = useState<{ columnIndex: number; cardIndex: number } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
+  const [labelFilter, setLabelFilter] = useState("");
+  const [boardViewMode, setBoardViewMode] = useState<ViewMode>("card");
   const [mobileProjectId, setMobileProjectId] = useState<string | null>(null);
   const [mobileColumnTitle, setMobileColumnTitle] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ columnIndex: number; cardIndex: number; title: string } | null>(null);
@@ -5659,7 +5664,7 @@ function BoardPage({
     ...column,
     cards: column.cards
       .map((card, cardIndex) => ({ card, cardIndex }))
-      .filter(({ card }) => matchesOwnerFilter(card) && (!normalizedSearchTerm || card.title.toLowerCase().includes(normalizedSearchTerm)))
+      .filter(({ card }) => matchesOwnerFilter(card) && (!labelFilter || card.category === labelFilter) && (!normalizedSearchTerm || card.title.toLowerCase().includes(normalizedSearchTerm)))
   }));
   const productMemberInitials = members.map((member) => getInitials(member.name));
   // Contagens consideram só o que está visível nas linhas (respeitando a sprint de cada projeto).
@@ -5898,7 +5903,7 @@ function BoardPage({
   }
 
   return (
-    <main className="dashboard board-page">
+    <main className={`dashboard board-page ${boardViewMode === "list" ? "board-list-mode" : ""}`}>
       <Topbar title="Board" subtitle="Acompanhe o progresso dos itens de delivery" theme={theme} onToggleTheme={onToggleTheme} />
 
       <section className="board-controls" aria-label="Controles do board">
@@ -5914,9 +5919,19 @@ function BoardPage({
               {rowMembers.map((member) => <option value={member.name} key={member.id}>{member.name}</option>)}
             </select>
           </label>
-          <button className="square-action" type="button" onClick={() => setIsBoardSettingsOpen(true)} aria-label="Configurar board" title="Configurar board">
-            <Settings size={18} />
-          </button>
+          <label className="board-filter-control">
+            <Tag size={18} />
+            <select value={labelFilter} onChange={(event) => setLabelFilter(event.target.value)} aria-label="Filtrar por etiqueta">
+              <option value="">Todas etiquetas</option>
+              {categories.map((category) => <option value={category.name} key={category.id}>{category.name}</option>)}
+            </select>
+          </label>
+          <div className="board-view-row">
+            <ViewModeToggle value={boardViewMode} onChange={setBoardViewMode} />
+            <button className="square-action" type="button" onClick={() => setIsBoardSettingsOpen(true)} aria-label="Configurar board" title="Configurar board">
+              <Settings size={18} />
+            </button>
+          </div>
         </div>
       </section>
 
@@ -5988,7 +6003,7 @@ function BoardPage({
               )}
             </div>
 
-            <div className="mobile-tabs" ref={scrollActiveTab} role="tablist" aria-label="Abas do board">
+            <div className="mobile-tabs" ref={(element) => scrollActiveTab(element)} role="tablist" aria-label="Abas do board">
               {filteredColumns.map((column, index) => (
                 <button
                   aria-selected={index === mobileColumnIndex}
@@ -8037,7 +8052,10 @@ function swipeHandlers(go: (step: number) => void) {
 /** Mantém a aba ativa visível na faixa de abas. */
 function scrollActiveTab(element: HTMLElement | null) {
   const active = element?.querySelector<HTMLElement>(".mobile-tab.active");
-  if (element && active) element.scrollTo({ left: active.offsetLeft - 12, behavior: "smooth" });
+  if (element && active) {
+    const offset = active.getBoundingClientRect().left - element.getBoundingClientRect().left + element.scrollLeft;
+    element.scrollTo({ left: Math.max(0, offset - 12) });
+  }
 }
 
 function ViewModeToggle({ value, onChange }: { value: ViewMode; onChange: (value: ViewMode) => void }) {
