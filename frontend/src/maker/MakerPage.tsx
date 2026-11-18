@@ -17,6 +17,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import { makerSampleData } from "./sample";
 import { deleteMakerFile, formatBytes, makerFileUrl, resizeImage, storeMakerFile } from "./files";
 import {
   brl,
@@ -655,7 +656,26 @@ const statusOf = (status: MakerOrderStatus) => orderStatuses.find((item) => item
 
 function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }) {
   const [tab, setTab] = useState<OrderTab>("line");
+  const [view, setView] = useState<"tabs" | "board">(() => {
+    try {
+      return window.localStorage.getItem("maker-orders-view") === "board" ? "board" : "tabs";
+    } catch {
+      return "tabs";
+    }
+  });
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<MakerOrderStatus | null>(null);
   const [editing, setEditing] = useState<MakerOrder | "new" | null>(null);
+  const isEmpty = !data.clients.length && !data.materials.length && !data.models.length && !data.orders.length;
+
+  function changeView(next: "tabs" | "board") {
+    setView(next);
+    try {
+      window.localStorage.setItem("maker-orders-view", next);
+    } catch {
+      // sem persistência: segue funcionando na sessão
+    }
+  }
   const clientName = (id: string) => data.clients.find((client) => client.id === id)?.name ?? "Cliente excluído";
   const open = data.orders.filter((order) => order.status !== "delivered").sort(productionOrder);
   const delivered = data.orders.filter((order) => order.status === "delivered").sort((a, b) => productionOrder(b, a));
@@ -732,8 +752,78 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
             <h2 className="maker-title">Pedidos</h2>
             <p className="mt-muted">{open.length} em aberto · {delivered.length} entregue(s)</p>
           </div>
-          <button className="mt-btn primary" onClick={() => setEditing("new")} type="button"><Plus size={16} /> Novo pedido</button>
+          <div className="maker-head-actions">
+            {isEmpty && <button className="mt-btn" onClick={() => onChange(makerSampleData())} type="button">Carregar dados de teste</button>}
+            <div className="mt-segment maker-view-toggle" role="group" aria-label="Modo de visualização">
+              <button className={view === "tabs" ? "active" : ""} onClick={() => changeView("tabs")} type="button">Abas</button>
+              <button className={view === "board" ? "active" : ""} onClick={() => changeView("board")} type="button">Por abas</button>
+            </div>
+            <button className="mt-btn primary" onClick={() => setEditing("new")} type="button"><Plus size={16} /> Novo pedido</button>
+          </div>
         </div>
+        {view === "board" ? (
+          <div className="maker-board" aria-label="Pedidos por etapa">
+            {orderStatuses.map((status, statusIndex) => {
+              const cards = data.orders.filter((order) => order.status === status.id).sort(status.id === "delivered" ? (a, b) => productionOrder(b, a) : productionOrder);
+              const next = orderStatuses[statusIndex + 1];
+              const previous = orderStatuses[statusIndex - 1];
+
+              return (
+                <section
+                  className={`maker-column ${dragOver === status.id ? "over" : ""}`}
+                  key={status.id}
+                  onDragLeave={() => setDragOver((current) => (current === status.id ? null : current))}
+                  onDragOver={(event) => { event.preventDefault(); setDragOver(status.id); }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const dropped = data.orders.find((order) => order.id === (dragId ?? event.dataTransfer.getData("text/plain")));
+                    if (dropped && dropped.status !== status.id) move(dropped, status.id);
+                    setDragId(null);
+                    setDragOver(null);
+                  }}
+                >
+                  <header className="maker-column-head" style={{ borderTopColor: status.color }}>
+                    <strong>{status.label}</strong>
+                    <span className="mt-count">{cards.length}</span>
+                  </header>
+                  <div className="maker-column-body">
+                    {cards.length === 0 && <p className="maker-column-empty">Arraste um pedido para cá</p>}
+                    {cards.map((order) => {
+                      const value = orderTotals(order, data);
+                      const badge = order.status !== "delivered" ? dueBadge(order.dueDate) : null;
+
+                      return (
+                        <article
+                          className={`maker-card ${badge?.tone === "late" ? "late" : ""} ${dragId === order.id ? "dragging" : ""}`}
+                          draggable
+                          key={order.id}
+                          onClick={() => setEditing(order)}
+                          onDragEnd={() => { setDragId(null); setDragOver(null); }}
+                          onDragStart={(event) => { setDragId(order.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", order.id); }}
+                          style={{ borderLeftColor: status.color }}
+                        >
+                          <strong>{clientName(order.clientId)}</strong>
+                          <p>{order.items.map((item) => `${item.quantity}× ${orderItemTitle(item, data.models)}`).join(", ")}</p>
+                          <div className="maker-card-meta">
+                            <span>{formatDay(order.dueDate, false)}</span>
+                            {badge && <span className={`maker-chip due ${badge.tone}`}>{badge.text}</span>}
+                          </div>
+                          <small className="mt-muted">{value.pieces} peça(s) · {num(value.hours)} h · {brl(value.cost)}</small>
+                          <div className="maker-card-actions" onClick={(event) => event.stopPropagation()}>
+                            {previous && <button aria-label={`Voltar para ${previous.label}`} className="mt-btn small" onClick={() => move(order, previous.id)} title={`Voltar para ${previous.label}`} type="button"><ChevronLeft size={14} /></button>}
+                            {next && <button aria-label={`Avançar para ${next.label}`} className="mt-btn small primary" onClick={() => move(order, next.id)} title={`Avançar para ${next.label}`} type="button"><ChevronRight size={14} /></button>}
+                            <button aria-label="Excluir pedido" className="mt-btn small ghost maker-danger" onClick={() => remove(order)} type="button"><Trash2 size={14} /></button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <>
         <div className="mt-segment maker-tabs" role="tablist">
           {tabs.map((item) => (
             <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} role="tab" type="button">
@@ -776,6 +866,8 @@ function OrdersSection({ data, onChange }: { data: MakerData; onChange: Update }
               );
             })}
           </div>
+        )}
+          </>
         )}
       </section>
 
@@ -844,7 +936,8 @@ function Stat({ label, value, alert = false }: { label: string; value: ReactNode
 function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order?: MakerOrder; onChange: Update; onClose: () => void }) {
   const [clientId, setClientId] = useState(order?.clientId ?? "");
   const [dueDate, setDueDate] = useState(order?.dueDate ?? "");
-  const [status, setStatus] = useState<MakerOrderStatus>(order?.status ?? "queue");
+  // Todo pedido novo entra na esteira (Na fila); a etapa muda pela esteira ou pelo quadro.
+  const status: MakerOrderStatus = order?.status ?? "queue";
   const [notes, setNotes] = useState(order?.notes ?? "");
   const [items, setItems] = useState<Array<MakerOrderItem & { quantityText: string }>>(() => order?.items.map((item) => ({ ...item, quantityText: String(item.quantity) })) ?? []);
   const [selectedModel, setSelectedModel] = useState("");
@@ -907,18 +1000,10 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
                 <option value="">Selecione o cliente…</option>
                 {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
               </select>
-              <button className="mt-btn small" onClick={() => setNested("client")} type="button"><Plus size={14} /> Novo cliente</button>
+              <button aria-label="Novo cliente" className="mt-btn small maker-plus" onClick={() => setNested("client")} title="Novo cliente" type="button"><Plus size={16} /></button>
             </div>
           </div>
-          <div className="maker-row">
-            <label className="mt-field">Data de entrega *<input onChange={(event) => { setDueDate(event.target.value); setError(""); }} type="date" value={dueDate} /></label>
-            <label className="mt-field">
-              Etapa
-              <select onChange={(event) => setStatus(event.target.value as MakerOrderStatus)} value={status}>
-                {orderStatuses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-              </select>
-            </label>
-          </div>
+          <label className="mt-field">Data de entrega *<input onChange={(event) => { setDueDate(event.target.value); setError(""); }} type="date" value={dueDate} /></label>
 
           <div className="mt-field">
             Modelos *
@@ -928,6 +1013,7 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
                 {models.map((model) => <option key={model.id} value={model.id}>{model.title} — {brl(modelCost(model, data.materials))}</option>)}
               </select>
               <input aria-label="Quantidade" className="maker-qty" inputMode="numeric" min="1" onChange={(event) => setQuantity(event.target.value)} step="1" type="number" value={quantity} />
+              <button aria-label="Cadastrar novo modelo" className="mt-btn small maker-plus" onClick={() => setNested("model")} title="Cadastrar novo modelo" type="button"><Plus size={16} /></button>
               <button
                 className="mt-btn small"
                 onClick={() => {
@@ -940,9 +1026,6 @@ function OrderModal({ data, order, onChange, onClose }: { data: MakerData; order
               >
                 <Plus size={14} /> Adicionar
               </button>
-            </div>
-            <div>
-              <button className="mt-btn small ghost" onClick={() => setNested("model")} type="button"><Plus size={14} /> Cadastrar novo modelo</button>
             </div>
             <div className="maker-lines">
               {items.length === 0 && <p className="mt-hint">Nenhum modelo adicionado.</p>}
