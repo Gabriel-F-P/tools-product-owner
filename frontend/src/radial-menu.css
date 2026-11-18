@@ -198,3 +198,25 @@
   display: block;
   margin-top: 2px;
 }
+
+/* Versão para computador: menu radial maior */
+@media (min-width: 900px) {
+  .radial-svg {
+    width: 780px;
+  }
+
+  .radial-toggle {
+    bottom: -36px;
+    width: 108px;
+    height: 108px;
+    padding-top: 14px;
+  }
+
+  .radial-toggle tna-logo {
+    width: 50px !important;
+  }
+
+  .radial-label {
+    font-size: 14px;
+  }
+}

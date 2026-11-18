@@ -5484,6 +5484,8 @@ function BoardPage({
   const [selectedBoardCardTarget, setSelectedBoardCardTarget] = useState<{ columnIndex: number; cardIndex: number } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
+  const [mobileProjectId, setMobileProjectId] = useState<string | null>(null);
+  const [mobileColumnTitle, setMobileColumnTitle] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ columnIndex: number; cardIndex: number; title: string } | null>(null);
   const [integrationNotice, setIntegrationNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
   const activeSprint = getActiveSprint(sprints, sprintStatuses);
@@ -5764,10 +5766,6 @@ function BoardPage({
 
       <section className="board-controls" aria-label="Controles do board">
         <div className="board-actions">
-          <button className="secondary-button" type="button" onClick={() => setIsBoardExportOpen(true)}>
-            <FileSpreadsheet size={17} />
-            Exportar
-          </button>
           <label className="search-field board-search-field">
             <Search size={18} />
             <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar titulo do card..." />
@@ -5791,6 +5789,117 @@ function BoardPage({
           {integrationNotice.message}
         </div>
       )}
+
+      {/* Visão para celular: um projeto por vez, abas (colunas) em chips e os cards em lista. */}
+      {(() => {
+        const mobileProject = projectRows.find((project) => project.id === mobileProjectId) ?? projectRows.find((project) => project.id === defaultProductId) ?? projectRows[0];
+        const mobileColumnIndex = Math.max(0, filteredColumns.findIndex((column) => column.title === mobileColumnTitle));
+        const mobileColumn = filteredColumns[mobileColumnIndex];
+
+        if (!mobileProject || !mobileColumn) {
+          return (
+            <section className="board-mobile" aria-label="Board para celular">
+              <p className="matrix-empty">Você ainda não está inserido em nenhum projeto. Peça a um administrador para adicioná-lo.</p>
+            </section>
+          );
+        }
+
+        const mobileSprint = sprintOfProject(mobileProject.id);
+        const mobileCounts = filteredColumns.map((column) => column.cards.filter(({ card }) => cardInRow(card, mobileProject)).length);
+        const mobileCells = mobileColumn.cards.filter(({ card }) => cardInRow(card, mobileProject));
+
+        return (
+          <section className="board-mobile" aria-label="Board para celular">
+            <div className="mobile-projects" role="tablist" aria-label="Projetos">
+              {projectRows.map((project) => {
+                const total = filteredColumns.reduce((sum, column) => sum + column.cards.filter(({ card }) => cardInRow(card, project)).length, 0);
+
+                return (
+                  <button
+                    aria-selected={project.id === mobileProject.id}
+                    className={`mobile-project-chip ${project.id === mobileProject.id ? "active" : ""}`}
+                    key={project.id}
+                    onClick={() => setMobileProjectId(project.id)}
+                    role="tab"
+                    type="button"
+                  >
+                    {project.name}
+                    <span>{total}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mobile-project-bar">
+              <strong>{mobileProject.name}</strong>
+              <span className={`matrix-method-tag ${mobileProject.method ?? "sprint"}`}>{projectMethodLabel[mobileProject.method ?? "sprint"]}</span>
+              {mobileSprint && (
+                <select
+                  aria-label={`Sprint exibida em ${mobileProject.name}`}
+                  className="matrix-sprint-select"
+                  onChange={(event) => setSprintByProject((current) => ({ ...current, [mobileProject.id]: event.target.value }))}
+                  value={mobileSprint.id}
+                >
+                  {sprints.map((sprint) => (
+                    <option key={sprint.id} value={sprint.id}>{sprint.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="mobile-tabs" role="tablist" aria-label="Abas do board">
+              {filteredColumns.map((column, index) => (
+                <button
+                  aria-selected={index === mobileColumnIndex}
+                  className={`mobile-tab ${column.color} ${index === mobileColumnIndex ? "active" : ""}`}
+                  key={column.title}
+                  onClick={() => setMobileColumnTitle(column.title)}
+                  role="tab"
+                  type="button"
+                >
+                  <span className={`column-icon ${column.color}`}>{renderBoardIcon(column.icon, 14)}</span>
+                  {column.title}
+                  <span className="mobile-tab-count">{mobileCounts[index]}</span>
+                </button>
+              ))}
+            </div>
+
+            <article
+              className={`kanban-column matrix-cell mobile-cards ${mobileColumn.color}`}
+              onDragOver={handleDragOver}
+              onDrop={(event) => handleDrop(event, mobileColumnIndex, mobileCells.length ? mobileCells[mobileCells.length - 1].cardIndex + 1 : mobileColumn.cards.length, mobileProject.id)}
+            >
+              <MatrixCardList count={mobileCells.length}>
+                {mobileCells.map(({ card, cardIndex }) => (
+                  <BoardCardItem
+                    card={card}
+                    isDragging={draggedCard?.columnIndex === mobileColumnIndex && draggedCard.cardIndex === cardIndex}
+                    key={card.id}
+                    onDragEnd={() => setDraggedCard(null)}
+                    onDragOver={handleDragOver}
+                    onDragStart={(event) => handleDragStart(event, mobileColumnIndex, cardIndex)}
+                    onDrop={(event) => handleDrop(event, mobileColumnIndex, cardIndex, mobileProject.id)}
+                    onOpenDetails={() => openBoardCardDetails(card, mobileColumnIndex, cardIndex, mobileColumn.title)}
+                    onRequestDelete={() => setDeleteTarget({ columnIndex: mobileColumnIndex, cardIndex, title: card.title })}
+                  />
+                ))}
+              </MatrixCardList>
+              <button
+                aria-label={`Adicionar card em ${mobileColumn.title} (${mobileProject.name})`}
+                className="add-card-button"
+                onClick={() => {
+                  setCreateTargetColumnIndex(mobileColumnIndex);
+                  setCreateTargetProductId(mobileProject.id);
+                }}
+                type="button"
+              >
+                <Plus size={17} />
+                Adicionar card
+              </button>
+            </article>
+          </section>
+        );
+      })()}
 
       <DualHorizontalScroll className="board-scroll-frame">
         <section className="board-matrix" aria-label="Board da sprint por projeto" style={{ "--matrix-columns": filteredColumns.length } as CSSProperties}>
@@ -5914,10 +6023,6 @@ function BoardPage({
       <footer className="board-footer">
         <div className="board-summary">
           <span>Total de itens: {totalItems}</span>
-          <button className="secondary-button" type="button">
-            <RefreshCcw size={17} />
-            Atualizar
-          </button>
         </div>
       </footer>
 
